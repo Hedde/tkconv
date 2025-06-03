@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="nl" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tweede Kamer AI - Welkom</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+            },
+            'tk-blue': {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              300: '#93c5fd',
+              400: '#60a5fa',
+              500: '#1e40af',
+              600: '#1d4ed8',
+              700: '#1e3a8a',
+              800: '#1e2a5a',
+              900: '#0f1729',
+            },
+            accent: {
+              500: '#1e40af',
+              600: '#1d4ed8',
+              700: '#1e3a8a',
+            }
+          },
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+
+<body class="font-sans">
+  <div class="fixed inset-0 bg-gradient-to-br from-tk-blue-50 via-blue-50 to-slate-50 -z-10"></div>
+  <div class="w-screen h-screen flex flex-col justify-center">
+    <div class="w-[80%] max-w-2xl mx-auto">
+      <div class="flex items-center justify-center mb-6">
+        <img src="images/tweede-kamer_logo.png" alt="Tweede Kamer" class="h-20 sm:h-24" />
+      </div>
+
+      <p class="text-slate-600 leading-tight tracking-tight mb-6 text-lg text-center">
+        Stel een vraag over de Tweede Kamer
+      </p>
+
+      <!-- Example Questions - Will be populated by JavaScript -->
+      <div id="example-questions" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 text-sm text-neutral-800">
+        <!-- Questions will be inserted here by JavaScript -->
+      </div>
+
+      <!-- Input Area -->
+      <div class="bg-white rounded-2xl shadow-lg border border-tk-blue-200 relative">
+        <div class="flex">
+          <textarea id="welcome-question" class="grow m-4 outline-none focus:outline-none active:border-transparent resize-none h-16 text-slate-800 placeholder-slate-500" placeholder="Typ je vraag hier..." rows="2"></textarea>
+        </div>
+        
+        <div class="flex gap-2 items-center absolute right-2 bottom-2">
+          <div id="char-count" class="text-xs text-slate-400">0/1000</div>
+          <button id="welcome-send-btn" onclick="startChatFromWelcome()" class="bg-gradient-to-r from-tk-blue-600 to-tk-blue-700 hover:from-tk-blue-700 hover:to-tk-blue-800 rounded-full text-white w-8 h-8 flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(-5deg) translate(-1px, 1px)">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration object for example questions - Based on real parliamentary data!
+    const EXAMPLE_QUESTIONS = [
+      {
+        text: 'Hoeveel zetels heeft de PVV in de Tweede Kamer en hoeveel stemmen hebben ze gekregen?',
+        icon: 'vote',
+        colors: 'from-green-100 to-emerald-100 group-hover:from-green-50 group-hover:to-emerald-50',
+        iconColor: 'text-green-600 group-hover:text-green-500',
+        agent: 'partijen'
+      },
+      {
+        text: 'Wat is er bekend over het wetsvoorstel huurbevriezing dat niet is ingediend?',
+        icon: 'file-text',
+        colors: 'from-blue-100 to-indigo-100 group-hover:from-blue-50 group-hover:to-indigo-50',
+        iconColor: 'text-blue-600 group-hover:text-blue-500',
+        agent: 'documenten'
+      },
+      {
+        text: 'Wie is Ruud Verkuijlen en wat is zijn achtergrond als Kamerlid?',
+        icon: 'users',
+        colors: 'from-pink-100 to-purple-100 group-hover:from-pink-50 group-hover:to-purple-50',
+        iconColor: 'text-pink-600 group-hover:text-pink-500',
+        agent: 'kamerleden'
+      },
+      {
+        text: 'Welke brieven van de regering zijn er deze week binnengekomen?',
+        icon: 'mail',
+        colors: 'from-orange-100 to-amber-100 group-hover:from-orange-50 group-hover:to-amber-50',
+        iconColor: 'text-orange-600 group-hover:text-orange-500',
+        agent: 'regering'
+      },
+      {
+        text: 'Geef een overzicht van alle actieve politieke partijen en hun zetelverdeling',
+        icon: 'pie-chart',
+        colors: 'from-cyan-100 to-blue-100 group-hover:from-cyan-50 group-hover:to-blue-50',
+        iconColor: 'text-cyan-600 group-hover:text-cyan-500',
+        agent: 'fracties'
+      },
+      {
+        text: 'Wat staat er in de recente brief over eerstelijns apotheekzorg?',
+        icon: 'heart',
+        colors: 'from-violet-100 to-purple-100 group-hover:from-violet-50 group-hover:to-purple-50',
+        iconColor: 'text-violet-600 group-hover:text-violet-500',
+        agent: 'zorgbeleid'
+      },
+      {
+        text: 'Hoeveel moties zijn er dit jaar ingediend en wat zijn de meest recente?',
+        icon: 'scroll',
+        colors: 'from-emerald-100 to-green-100 group-hover:from-emerald-50 group-hover:to-green-50',
+        iconColor: 'text-emerald-600 group-hover:text-emerald-500',
+        agent: 'moties'
+      },
+      {
+        text: 'Wie is Doğukan Ergin en uit welke plaats komt hij?',
+        icon: 'user',
+        colors: 'from-yellow-100 to-orange-100 group-hover:from-yellow-50 group-hover:to-orange-50',
+        iconColor: 'text-yellow-600 group-hover:text-yellow-500',
+        agent: 'biografie'
+      },
+      {
+        text: 'Welke schriftelijke vragen zijn er gesteld en wat zijn de antwoorden?',
+        icon: 'help-circle',
+        colors: 'from-teal-100 to-cyan-100 group-hover:from-teal-50 group-hover:to-cyan-50',
+        iconColor: 'text-teal-600 group-hover:text-teal-500',
+        agent: 'kamervragen'
+      },
+      {
+        text: 'Wat is de motie van Eerdmans en Bikker over het Skaeve Huse programma?',
+        icon: 'home',
+        colors: 'from-red-100 to-pink-100 group-hover:from-red-50 group-hover:to-pink-50',
+        iconColor: 'text-red-600 group-hover:text-red-500',
+        agent: 'motie-specifiek'
+      },
+      {
+        text: 'Welke partij heeft de meeste stemmen gekregen en hoe verhoudt zich dat tot de zetelverdeling?',
+        icon: 'bar-chart-3',
+        colors: 'from-indigo-100 to-blue-100 group-hover:from-indigo-50 group-hover:to-blue-50',
+        iconColor: 'text-indigo-600 group-hover:text-indigo-500',
+        agent: 'verkiezingen'
+      },
+      {
+        text: 'Wat is er te vinden over Bram Kouwenhoven uit Gouda?',
+        icon: 'map-pin',
+        colors: 'from-purple-100 to-violet-100 group-hover:from-purple-50 group-hover:to-violet-50',
+        iconColor: 'text-purple-600 group-hover:text-purple-500',
+        agent: 'kamerlid-profiel'
+      }
+    ];
+
+    // Function to shuffle array and get random selection
+    function getRandomQuestions(questions, count = 4) {
+      const shuffled = [...questions].sort(() => 0.5 - Math.random());
+      return shuffled.slice(0, count);
+    }
+
+    // Function to create question HTML
+    function createQuestionHTML(question) {
+      return `
+        <div class="group relative border border-tk-blue-200 bg-white/80 shadow-md hover:bg-white/90 hover:shadow-lg hover:translate-y-[1px] rounded-xl p-4 transition-all duration-300 cursor-pointer" onclick="usePrompt('${question.text.replace(/'/g, "\\'")}')">
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 bg-gradient-to-br ${question.colors} rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-all duration-300">
+              <i data-lucide="${question.icon}" class="w-4 h-4 ${question.iconColor} transition-colors duration-300"></i>
+            </div>
+            <span class="flex-1 text-slate-700">${question.text}</span>
+          </div>
+          <svg class="absolute right-2 bottom-2 h-4 text-slate-400 opacity-100 translate-x-0 group-hover:opacity-0 group-hover:-translate-x-4 transition-all duration-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none"><path d="M2 8a.75.75 0 0 1 .75-.75h8.787L8.25 4.309a.75.75 0 0 1 1-1.118L14 7.441a.75.75 0 0 1 0 1.118l-4.75 4.25a.75.75 0 1 1-1-1.118l3.287-2.941H2.75A.75.75 0 0 1 2 8z" fill="currentColor"></path></g></svg>
+        </div>
+      `;
+    }
+
+    // Function to populate example questions
+    function populateExampleQuestions() {
+      const container = document.getElementById('example-questions');
+      const randomQuestions = getRandomQuestions(EXAMPLE_QUESTIONS, 4);
+      
+      container.innerHTML = randomQuestions.map(createQuestionHTML).join('');
+      
+      // Re-initialize Lucide icons for the new content
+      lucide.createIcons();
+    }
+
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // Character count functionality
+    function updateCharCount() {
+      const input = document.getElementById('welcome-question');
+      const counter = document.getElementById('char-count');
+      if (input && counter) {
+        const length = input.value.length;
+        counter.textContent = `${length}/1000`;
+        if (length > 1000) {
+          counter.classList.add('text-red-500');
+          counter.classList.remove('text-slate-400');
+        } else {
+          counter.classList.add('text-slate-400');
+          counter.classList.remove('text-red-500');
+        }
+      }
+    }
+
+    // Add event listener for character counting and populate questions
+    document.addEventListener('DOMContentLoaded', function() {
+      const questionInput = document.getElementById('welcome-question');
+      if (questionInput) {
+        questionInput.addEventListener('input', updateCharCount);
+      }
+      
+      // Populate random example questions
+      populateExampleQuestions();
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

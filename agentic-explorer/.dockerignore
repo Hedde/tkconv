@@ -1,0 +1,26 @@
+# Exclude VCS
+.git
+
+# Bytecode / cache
+__pycache__
+*.py[cod]
+*.pyc
+
+# Virtualenvs
+.venv
+venv
+env
+
+# Editor / IDE
+.vscode
+.idea
+
+# Tests / coverage
+.coverage*
+htmlcov
+
+# macOS
+.DS_Store
+
+# Misc
+*.log 

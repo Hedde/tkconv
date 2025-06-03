@@ -1,0 +1,9 @@
+FROM nginx:alpine
+
+# Copy static demo files into Nginx html dir
+COPY demo /usr/share/nginx/html
+
+# Expose standard HTTP port
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"] 

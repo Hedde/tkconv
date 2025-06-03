@@ -5,3 +5,11 @@ xml.sqlite3
 xml.sqlite3-shm
 xml.sqlite3-wal
 docker-compose.*
+
+# Environment files (may contain sensitive data)
+.env
+.env.*
+!.env.example
+
+# Runtime data directory
+data/

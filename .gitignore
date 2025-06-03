@@ -31,3 +31,9 @@
 *.out
 *.app
 *~
+
+# Runtime data and databases
+data/
+
+# Agentic Explorer
+agentic-explorer/.env

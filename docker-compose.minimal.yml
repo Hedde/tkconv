@@ -1,0 +1,112 @@
+---
+services:
+  tksync-minimal:
+    image: ${TKCONV_IMAGE:-tkconv:latest}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Run the original sync script in background
+        /mounted-scripts/tksync-skiptoken.sh &
+        SYNC_PID=$$!
+        
+        # Function to sync database files to mounted directory
+        sync_databases() {
+          if [ -f "/app/tk.sqlite3" ]; then
+            echo "Syncing database files to mounted directory..."
+            cp /app/*.sqlite3 /app/db-export/ 2>/dev/null || true
+            cp /app/*.sqlite3-shm /app/db-export/ 2>/dev/null || true  
+            cp /app/*.sqlite3-wal /app/db-export/ 2>/dev/null || true
+            echo "Database files synced to /app/db-export/"
+          fi
+        }
+        
+        # Initial sync when database becomes available
+        while [ ! -f "/app/tk.sqlite3" ]; do
+          echo "Waiting for database to be created..."
+          sleep 10
+        done
+        sync_databases
+        
+        # Sync files every 30 seconds
+        while true; do
+          sleep 30
+          sync_databases
+        done
+    restart: unless-stopped
+    volumes:
+      - data-minimal:/app
+      - ./docker:/mounted-scripts:ro
+      - ./data:/app/db-export:rw
+    environment:
+      - MINIMAL_MODE=true
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/tk.sqlite3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  tkserv-minimal:
+    image: ${TKCONV_IMAGE:-tkconv:latest}
+    command:
+      - tkserv
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    volumes:
+      - data-minimal:/app
+      - ./data:/app/db-export:rw
+    depends_on:
+      tksync-minimal:
+        condition: service_healthy
+
+  agentic-api-minimal:
+    build:
+      context: agentic-explorer
+      dockerfile: docker/Dockerfile
+    env_file:
+      - agentic-explorer/.env
+    ports:
+      - "8091:8888"
+    develop:
+      watch:
+        - action: sync
+          path: ./agentic-explorer/src
+          target: /usr/src/app/src
+          ignore:
+            - "**/__pycache__/**"
+        - action: rebuild
+          path: agentic-explorer/src/requirements.txt
+    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8888", "--reload"]
+    restart: unless-stopped
+    environment:
+      MCP_URL: http://mcp:6277
+      SENTENCE_TRANSFORMERS_HOME: /usr/src/app/.cache/sentence_transformers
+      TKCONV_DB_PATH: /app/db-export/tk.sqlite3
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - model_cache:/usr/src/app/.cache/sentence_transformers
+      - ./data:/app/db-export:rw
+    depends_on:
+      tksync-minimal:
+        condition: service_healthy
+
+  agentic-demo-minimal:
+    build:
+      context: agentic-explorer
+      dockerfile: docker/Dockerfile.demo
+    develop:
+      watch:
+        - action: sync
+          path: ./agentic-explorer/demo
+          target: /usr/share/nginx/html
+          ignore:
+            - "**/.DS_Store"
+    ports:
+      - "9090:80"
+    restart: unless-stopped
+
+volumes:
+  data-minimal: 
+  model_cache: {}

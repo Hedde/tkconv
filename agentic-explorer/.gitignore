@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+env/
+
+# Logs & caches
+*.log
+*.log.*
+*.cache
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# macOS metadata
+.DS_Store
+
+# Test / coverage
+.tox/
+.nox/
+.coverage*
+htmlcov/
+
+# Docker artefacts
+*.tar
+
+# Secrets / config overrides
+*.env

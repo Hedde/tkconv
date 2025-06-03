@@ -1,0 +1,641 @@
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.loading-shimmer {
+  background: linear-gradient(to right, rgba(241, 242, 246, 0.2) 8%, rgba(241, 242, 246, 0.5) 18%, rgba(241, 242, 246, 0.2) 33%);
+  background-size: 1000px 100%;
+  animation: shimmer 1.5s infinite linear;
+  height: 1em;
+  border-radius: 8px;
+  margin-bottom: 0.5em;
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Prose table styling */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+.prose th, .prose td {
+  word-break: normal;
+  white-space: normal;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+.prose th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+}
+
+.prose tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+/* Code styling */
+.prose pre {
+  background-color: #f4f4f5;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.prose code {
+  background-color: #f4f4f5;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.prose pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Ensure proper word breaking */
+.prose.break-words {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Verbeterde prose styling voor markdown */
+.prose {
+  line-height: 1.5;
+  color: #6b7280;
+  font-size: 0.875rem;
+  max-width: none;
+  font-weight: 400;
+}
+
+.prose p {
+  margin: 1rem 0;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+.prose p:first-child {
+  margin-top: 0;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  margin: 1.5rem 0 0.75rem 0;
+  line-height: 1.25;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.prose h1 {
+  font-size: 1.25rem;
+  color: #374151;
+  font-weight: 600;
+}
+
+.prose h2 {
+  font-size: 1.125rem;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.prose h3 {
+  font-size: 1rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.prose h1:first-child, .prose h2:first-child, .prose h3:first-child {
+  margin-top: 0;
+}
+
+.prose ul, .prose ol {
+  margin: 1rem 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.prose ol {
+  counter-reset: list-counter;
+}
+
+.prose ol > li {
+  counter-increment: list-counter;
+  position: relative;
+  margin: 0.5rem 0;
+  padding-left: 3rem;
+  line-height: 1.4;
+  color: #6b7280;
+}
+
+.prose ol > li::before {
+  content: counter(list-counter);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2rem;
+  height: 2rem;
+  background: linear-gradient(135deg, #e0e7ff, #f3e8ff);
+  border: 1px solid #c7d2fe;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6366f1;
+}
+
+.prose ul > li {
+  position: relative;
+  margin: 0.4rem 0;
+  padding-left: 2rem;
+  line-height: 1.4;
+  color: #6b7280;
+}
+
+.prose ul > li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.75rem;
+  width: 0.375rem;
+  height: 0.375rem;
+  background: linear-gradient(135deg, #a855f7, #6366f1);
+  border-radius: 50%;
+}
+
+.prose li:first-child {
+  margin-top: 0;
+}
+
+.prose li:last-child {
+  margin-bottom: 0;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.prose em {
+  font-style: italic;
+  color: #6b7280;
+}
+
+.prose a {
+  color: #4f46e5;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.prose a:hover {
+  color: #7c3aed;
+  border-bottom-color: #7c3aed;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(124, 58, 237, 0.1));
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  margin: -0.125rem -0.25rem;
+}
+
+.prose blockquote {
+  margin: 2rem 0;
+  padding: 1.5rem 2rem;
+  border-left: 4px solid #e0e7ff;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.03), rgba(124, 58, 237, 0.03));
+  border-radius: 0 0.75rem 0.75rem 0;
+  font-style: italic;
+  color: #6b7280;
+  font-size: 1.05rem;
+}
+
+.prose hr {
+  margin: 3rem 0;
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+}
+
+/* Extra spacing for large prose */
+.prose-lg {
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.prose-lg p {
+  margin: 1.75rem 0;
+  line-height: 1.9;
+}
+
+.prose-lg h1, .prose-lg h2, .prose-lg h3, .prose-lg h4, .prose-lg h5, .prose-lg h6 {
+  margin: 2.75rem 0 1.5rem 0;
+}
+
+.prose-lg h1:first-child, .prose-lg h2:first-child, .prose-lg h3:first-child {
+  margin-top: 0;
+}
+
+.prose-lg ul, .prose-lg ol {
+  margin: 2rem 0;
+}
+
+.prose-lg ol > li {
+  margin: 1.25rem 0;
+  line-height: 1.8;
+}
+
+.prose-lg ul > li {
+  margin: 1rem 0;
+  line-height: 1.8;
+}
+
+.prose-lg blockquote {
+  margin: 3rem 0;
+  padding: 2.5rem 3rem;
+  line-height: 2;
+}
+
+/* Message styling */
+.message-user, .message-assistant, .message-thinking {
+  margin-bottom: 1rem;
+}
+
+.message-assistant {
+  position: relative;
+}
+
+.message-user .bg-gradient-to-r {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.message-assistant .prose {
+  max-width: none;
+}
+
+/* Thinking indicator animation */
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.thinking-dot {
+  animation: thinking 1.4s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) { 
+  animation-delay: 0.2s; 
+}
+
+.thinking-dot:nth-child(3) { 
+  animation-delay: 0.4s; 
+}
+
+@keyframes thinking {
+  0%, 60%, 100% { 
+    opacity: 0.3; 
+    transform: scale(0.8);
+  }
+  30% { 
+    opacity: 1; 
+    transform: scale(1);
+  }
+}
+
+/* System status styling */
+.system-status {
+  transition: opacity 0.3s ease-out;
+}
+
+.system-status.fade-out {
+  opacity: 0;
+}
+
+/* Chain of thought styling */
+.message-thinking {
+  margin-bottom: 0.5rem;
+}
+
+.message-thinking .bg-blue-50 {
+  border-left: 3px solid #3b82f6;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Loading states */
+.loading-message {
+  opacity: 0.7;
+}
+
+.loading-message .prose {
+  position: relative;
+}
+
+.loading-message .prose::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+/* Disabled button state */
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Thinking brain animation */
+.thinking-brain {
+  animation: pulse-brain 2s ease-in-out infinite;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+@keyframes pulse-brain {
+  0%, 100% { 
+    opacity: 0.9; 
+    transform: scale(1);
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  }
+  50% { 
+    opacity: 1; 
+    transform: scale(1.08);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+  }
+}
+
+/* Waiting for answer dots */
+.thinking-dots {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.thinking-dots .thinking-dot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  background: linear-gradient(45deg, #6366f1, #8b5cf6);
+  border-radius: 50%;
+  animation: thinking-dots 1.4s ease-in-out infinite;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.thinking-dots .thinking-dot:nth-child(2) { 
+  animation-delay: 0.2s; 
+}
+
+.thinking-dots .thinking-dot:nth-child(3) { 
+  animation-delay: 0.4s; 
+}
+
+@keyframes thinking-dots {
+  0%, 60%, 100% { 
+    opacity: 0.4; 
+    transform: scale(0.8);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  30% { 
+    opacity: 1; 
+    transform: scale(1.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Citations styling */
+.citations-area {
+  transition: all 0.3s ease-out;
+}
+
+.citation-item a {
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.citation-item a:hover {
+  border-color: #e5e7eb;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Thinking area transitions */
+#thinking-area {
+  transition: all 0.3s ease-out;
+}
+
+/* Current thought text animation */
+#current-thought {
+  transition: all 0.2s ease-out;
+}
+
+/* Waiting for answer styling */
+.waiting-for-answer {
+  opacity: 0.7;
+}
+
+/* Thinking steps styling */
+.thinking-step {
+  transition: all 0.2s ease-out;
+}
+
+.thinking-step:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Important thinking steps (agent events, thoughts) */
+.thinking-step.shadow-sm {
+  transition: all 0.2s ease-out;
+}
+
+.thinking-step.shadow-sm:hover {
+  background: linear-gradient(to right, #e0e7ff, #f3e8ff) !important;
+  border-color: #6366f1;
+  box-shadow: 0 4px 12px 0 rgba(99, 102, 241, 0.15);
+  transform: translateY(-1px);
+}
+
+/* Regular thinking steps hover */
+.thinking-step.border-indigo-100\/50:hover {
+  background: linear-gradient(to right, #fefbff, #f8fafc) !important;
+  border-color: #c7d2fe;
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* Thinking details toggle */
+.thinking-details {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.thinking-details:not(.hidden) {
+  max-height: 20rem; /* 320px - matches max-h-80 */
+}
+
+/* Chevron animation */
+.chevron {
+  transition: transform 0.2s ease-out;
+}
+
+/* Thinking area transitions */
+#thinking-area {
+  transition: all 0.3s ease-out;
+}
+
+#thinking-steps {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+#thinking-steps::-webkit-scrollbar {
+  width: 4px;
+}
+
+#thinking-steps::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#thinking-steps::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+#thinking-steps::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .message-user .max-w-\[80\%\], 
+  .message-assistant .max-w-\[85\%\] {
+    max-width: 95%;
+  }
+  
+  .message-user .rounded-2xl,
+  .message-assistant .rounded-2xl {
+    border-radius: 1rem;
+  }
+  
+  .citation-item a {
+    padding: 0.75rem;
+  }
+  
+  .citation-item .font-medium {
+    font-size: 0.75rem;
+  }
+}
+
+/* Feedback buttons container styling */
+.feedback-buttons-container {
+  transition: all 0.3s ease;
+}
+
+.feedback-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.feedback-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  font-size: 0.875rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.feedback-action-btn:hover {
+  background: #f8fafc;
+  color: #374151;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-color: #d1d5db;
+}
+
+.feedback-action-btn.active.thumbs-up {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  color: #16a34a;
+  border-color: #86efac;
+  box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.2);
+}
+
+.feedback-action-btn.active.thumbs-down {
+  background: linear-gradient(135deg, #fef2f2, #fecaca);
+  color: #dc2626;
+  border-color: #fca5a5;
+  box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.2);
+}
+
+.feedback-action-btn.copied {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  color: #16a34a;
+  border-color: #86efac;
+  box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.2);
+  animation: pulse-success 0.6s ease-out;
+}
+
+@keyframes pulse-success {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+
+
+/* Responsive adjustments for feedback buttons */
+@media (max-width: 640px) {
+  .feedback-buttons-container {
+    padding: 1rem 1.5rem;
+  }
+  
+  .feedback-buttons-container .flex {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .feedback-buttons {
+    align-self: flex-end;
+  }
+} 

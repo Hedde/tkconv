@@ -1,0 +1,8 @@
+## Query Rewriter
+Herschrijf de NL-vraag hieronder naar een zelfstandige, maximaal 50-woorden zoekopdracht.
+Neem essentiële zelfstandige naamwoorden en kernwoorden expliciet op.
+
+HUIDIGE VRAAG:
+{{$question}}
+
+Rewritten query: 

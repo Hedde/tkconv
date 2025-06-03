@@ -1,12 +1,49 @@
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <iostream>
+#include <variant>
 #include "httplib.h"
 #include "sqlwriter.hh"
 #include "pugixml.hpp"
 #include "support.hh"
 
 using namespace std;
+
+// Safe conversion functions to handle empty strings
+int64_t safe_atoi(const string& str) {
+  if (str.empty()) return 0;
+  return atoi(str.c_str());
+}
+
+double safe_atof(const string& str) {
+  if (str.empty()) return 0.0;
+  return atof(str.c_str());
+}
+
+// Function to safely handle potentially empty string fields for SQLiteWriter
+string safe_string(const string& str) {
+  return str; // SQLiteWriter can handle empty strings fine
+}
+
+// Helper function to create safe variant values for SQLiteWriter
+using var_t = std::variant<int64_t, double, string, nullptr_t, vector<uint8_t>>;
+
+var_t make_safe_variant(const string& str) {
+  return var_t(str);
+}
+
+var_t make_safe_variant(int64_t val) {
+  return var_t(val);
+}
+
+var_t make_safe_variant(double val) {
+  return var_t(val);
+}
+
+var_t make_safe_variant(int val) {
+  return var_t(static_cast<int64_t>(val));
+}
+
 int main(int argc, char** argv)
 {
   vector<string> categories={
@@ -47,9 +84,19 @@ int main(int argc, char** argv)
     sqlw.query("create index if not exists "+category+"skipidx on "+category+"('skiptoken')");
     int skiptoken = -1;
     try {
+      cerr << "About to query skiptoken for category: " << category << endl;
       auto ret = sqlw.queryT("select skiptoken from "+category+" order by rowid desc limit 1");
+      cerr << "Successfully queried skiptoken, got " << ret.size() << " results" << endl;
       if(!ret.empty()) { 
-	skiptoken = get<int64_t>(ret[0]["skiptoken"]);
+        auto& skiptoken_var = ret[0]["skiptoken"];
+        // Safely access the variant - it might be stored as string or int64_t
+        if (holds_alternative<int64_t>(skiptoken_var)) {
+          skiptoken = get<int64_t>(skiptoken_var);
+        } else if (holds_alternative<string>(skiptoken_var)) {
+          skiptoken = safe_atoi(get<string>(skiptoken_var));
+        } else {
+          cerr << "Warning: Unexpected skiptoken type for category " << category << ", starting from -1" << endl;
+        }
       }
     }
     catch(std::exception& e) {
@@ -57,10 +104,22 @@ int main(int argc, char** argv)
     }
     int numentries=0, deleterequests=0;
     unordered_set<string> dels, adds;
+    cerr << "About to query xmlstore for category: " << category << " with skiptoken > " << skiptoken << endl;
     auto entries = xmlstore.queryT("select * from "+category+" where skiptoken > ?", {skiptoken});
+    cerr << "Successfully queried xmlstore, got " << entries.size() << " entries for category: " << category << endl;
     for(auto& exml : entries) {
       pugi::xml_document pnode;
-      if (!pnode.load_string( (get<string>(exml["xml"])).c_str())) {
+      // Safely access the xml field from the variant
+      auto& xml_var = exml["xml"];
+      string xml_content;
+      if (holds_alternative<string>(xml_var)) {
+        xml_content = get<string>(xml_var);
+      } else {
+        cerr << "Warning: xml field is not a string for category " << category << ", skipping entry" << endl;
+        continue;
+      }
+      
+      if (!pnode.load_string(xml_content.c_str())) {
 	cout<<"Could not load"<<endl;
 	return -1;
       }
@@ -83,7 +142,7 @@ int main(int argc, char** argv)
 	    if(auto pos = next.find("skiptoken="); pos ==string::npos)
 	      throw std::runtime_error("Could not find skiptoken in "+next);
 	    else {
-	      skiptoken = atoi(next.substr(pos+10).c_str());
+	      skiptoken = safe_atoi(next.substr(pos+10));
 	    }
 	  }
 	}
@@ -95,751 +154,779 @@ int main(int argc, char** argv)
 	  bijgewerkt = bijgewerkt.substr(0, pos);
       }
 
-      string lcat = category;
-      lcat[0] = tolower(lcat[0]);
-      if(auto child = node.child("content").child(lcat.c_str()); child.attribute("tk:verwijderd").value() == string("true") ||
+      // Add debug logging
+      cerr << "Processing entry with id: " << id << ", category: " << category << ", bijgewerkt: " << bijgewerkt << endl;
+
+      try {
+        string lcat = category;
+        lcat[0] = tolower(lcat[0]);
+        if(auto child = node.child("content").child(lcat.c_str()); child.attribute("tk:verwijderd").value() == string("true") ||
 							         child.attribute("ns1:verwijderd").value() == string("true")) {
-        sqlw.query("delete from "+category+" where id=?", {id});
-        sqlw.query("delete from link where van=?", {id});
-        sqlw.query("delete from link where naar=?", {id});
-	deleterequests++;
-	dels.insert(id);
-	continue;
-      }
-      adds.insert(id);
-      if(auto child = node.child("content").child("activiteit")) {
-	// relaties inkomend, ActiviteitActor, AgendaPunt
-	// twee-weg: Zichzelf (VoortgezetVanuit, VoortgezetIn, VervangenVanuit, VervangenDoor)
-	
-	string datum = child.child("datum").child_value();
-	string onderwerp = child.child("onderwerp").child_value();
-	string noot = child.child("noot").child_value();
-	string soort = child.child("soort").child_value();
-	string aanvangstijd = child.child("aanvangstijd").child_value();
-	string eindtijd = child.child("eindtijd").child_value();
-	string vrsNummer = child.child("vrsNummer").child_value();
-	string voortouwnaam = child.child("voortouwnaam").child_value();
-	string besloten = child.child("besloten").child_value();
+          sqlw.query("delete from "+category+" where id=?", {id});
+          sqlw.query("delete from link where van=?", {id});
+          sqlw.query("delete from link where naar=?", {id});
+          deleterequests++;
+          dels.insert(id);
+          continue;
+        }
+        adds.insert(id);
 
-	string voortouwafkorting = child.child("voortouwafkorting").child_value();
-	string nummer = child.child("nummer").child_value();
-	auto repl = [&](string name) {
-	  string lname = name;
-	  lname[0] = tolower(lname[0]);
-	  for(auto& a : child.children(lname.c_str())) {
-	    sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", a.attribute("ref").value()}, {"linkSoort", name}}, "link");
-	  }
-	};
-	repl("vervangenVanuit");
-	repl("voortgezetVanuit");
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", nummer}, {"soort", soort}, {"onderwerp", onderwerp},
-		       {"aanvangstijd", aanvangstijd}, {"eindtijd", eindtijd}, {"besloten", besloten},
-		       {"datum", datum}, {"vrsNummer", vrsNummer}, {"voortouwNaam", voortouwnaam} , {"voortouwAfkorting", voortouwafkorting}, {"noot", noot}, {"updated", updated}, {"bijgewerkt", bijgewerkt}}, category);
+        // Add more detailed logging for each type of content
+        if(auto child = node.child("content").child("activiteit")) {
+          cerr << "Processing activiteit for id: " << id << endl;
+          // relaties inkomend, ActiviteitActor, AgendaPunt
+          // twee-weg: Zichzelf (VoortgezetVanuit, VoortgezetIn, VervangenVanuit, VervangenDoor)
 	  
-      }
-      else if(auto child = node.child("content").child("document")) {
-	string datum = child.child("datum").child_value();
-	string soort = child.child("soort").child_value();
-	string onderwerp = child.child("onderwerp").child_value();
-	string titel = child.child("titel").child_value();
-	string contentType = child.attribute("tk:contentType").value();
-	int64_t contentLength = atoi(child.attribute("tk:contentLength").value());
-	string vergaderjaar = child.child("vergaderjaar").child_value();
-	string aanhangselnummer = child.child("aanhangselnummer").child_value();
-	string documentNummer = child.child("documentNummer").child_value();
-	string citeerTitel = child.child("citeerTitel").child_value();
-	string datumRegistratie = child.child("datumRegistratie").child_value();
-	string datumOntvangst = child.child("datumOntvangst").child_value();
-	string huidigeDocumentVersieId = child.child("huidigeDocumentVersie").attribute("ref").value();
-	string bronDocument = child.child("bronDocument").attribute("ref").value();
-	string agendapuntId = child.child("agendapunt").attribute("ref").value();
-	string kamerstukdossierId = child.child("kamerstukdossier").attribute("ref").value();
-	int64_t volgnummer = atoi(child.child("volgnummer").child_value());;
+          string datum = child.child("datum").child_value();
+          string onderwerp = child.child("onderwerp").child_value();
+          string noot = child.child("noot").child_value();
+          string soort = child.child("soort").child_value();
+          string aanvangstijd = child.child("aanvangstijd").child_value();
+          string eindtijd = child.child("eindtijd").child_value();
+          string vrsNummer = child.child("vrsNummer").child_value();
+          string voortouwnaam = child.child("voortouwnaam").child_value();
+          string besloten = child.child("besloten").child_value();
 
-	auto repl = [&](string name) {
-	  string lname = name;
-	  lname[0] = tolower(lname[0]);
-	  for(auto& activiteit : child.children(lname.c_str())) {
-	    sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", activiteit.attribute("ref").value()}, {"linkSoort", name}}, "link");
-	  }
-	};
-
-	repl("Activiteit");
-	repl("Zaak");
-	
-	sqlw.addOrReplaceValue({{"id", id},  {"skiptoken", skiptoken}, {"nummer", documentNummer}, {"agendapuntId", agendapuntId}, {"soort", soort}, {"onderwerp", onderwerp}, {"datum", datum}, {"enclosure", enclosure}, {"bronDocument", bronDocument}, {"updated", updated}, {"bijgewerkt", bijgewerkt}, {"kamerstukdossierId", kamerstukdossierId}, {"volgnummer", volgnummer}, {"titel", titel}, {"citeerTitel", citeerTitel}, {"contentLength", contentLength}, {"contentType", contentType}, {"huidigeDocumentVersieId", huidigeDocumentVersieId}, {"vergaderjaar", vergaderjaar}, {"aanhangselnummer", aanhangselnummer},{"datumRegistratie", datumRegistratie}, {"datumOntvangst", datumOntvangst}}, category);
-      }
-      else if(auto child = node.child("content").child("zaak")) {
+          string voortouwafkorting = child.child("voortouwafkorting").child_value();
+          string nummer = child.child("nummer").child_value();
+          auto repl = [&](string name) {
+            string lname = name;
+            lname[0] = tolower(lname[0]);
+            for(auto& a : child.children(lname.c_str())) {
+              sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", a.attribute("ref").value()}, {"linkSoort", name}}, "link");
+            }
+          };
+          repl("vervangenVanuit");
+          repl("voortgezetVanuit");
 	  
-	string gestartOp = child.child("gestartOp").child_value();
-	string onderwerp = child.child("onderwerp").child_value();
-	string titel = child.child("titel").child_value();
-	string zaakNummer = child.child("nummer").child_value();
-	string kabinetsappreciatie = child.child("kabinetsappreciatie").child_value();
-	string organisatie = child.child("organisatie").child_value();
-	string soort = child.child("soort").child_value();
-	string status = child.child("status").child_value();
-	string citeertitel =child.child("citeertitel").child_value();
-	string afgedaan =child.child("afgedaan").child_value();
-	string grootProject =child.child("grootProject").child_value();
-	string vergaderjaar =child.child("vergaderjaar").child_value();
-	string volgnummer =child.child("volgnummer").child_value();
+          cerr << "About to insert activiteit with id: " << id << endl;
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", nummer}, {"soort", soort}, {"onderwerp", onderwerp},
+                 {"aanvangstijd", aanvangstijd}, {"eindtijd", eindtijd}, {"besloten", besloten},
+                 {"datum", datum}, {"vrsNummer", vrsNummer}, {"voortouwNaam", voortouwnaam} , {"voortouwAfkorting", voortouwafkorting}, {"noot", noot}, {"updated", updated}, {"bijgewerkt", bijgewerkt}}, category);
+          cerr << "Successfully inserted activiteit with id: " << id << endl;
+	  
+        }
+        else if(auto child = node.child("content").child("document")) {
+          string datum = child.child("datum").child_value();
+          string soort = child.child("soort").child_value();
+          string onderwerp = child.child("onderwerp").child_value();
+          string titel = child.child("titel").child_value();
+          string contentType = child.attribute("tk:contentType").value();
+          int64_t contentLength = atoi(child.attribute("tk:contentLength").value());
+          string vergaderjaar = child.child("vergaderjaar").child_value();
+          string aanhangselnummer = child.child("aanhangselnummer").child_value();
+          string documentNummer = child.child("documentNummer").child_value();
+          string citeerTitel = child.child("citeerTitel").child_value();
+          string datumRegistratie = child.child("datumRegistratie").child_value();
+          string datumOntvangst = child.child("datumOntvangst").child_value();
+          string huidigeDocumentVersieId = child.child("huidigeDocumentVersie").attribute("ref").value();
+          string bronDocument = child.child("bronDocument").attribute("ref").value();
+          string agendapuntId = child.child("agendapunt").attribute("ref").value();
+          string kamerstukdossierId = child.child("kamerstukdossier").attribute("ref").value();
+          int64_t volgnummer = atoi(child.child("volgnummer").child_value());
+
+          auto repl = [&](string name) {
+            string lname = name;
+            lname[0] = tolower(lname[0]);
+            for(auto& activiteit : child.children(lname.c_str())) {
+              sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", activiteit.attribute("ref").value()}, {"linkSoort", name}}, "link");
+            }
+          };
+
+          repl("Activiteit");
+          repl("Zaak");
+	  
+          cerr << "About to insert document with id: " << id << ", contentLength: " << contentLength << ", volgnummer: " << volgnummer << endl;
+          sqlw.addOrReplaceValue({{"id", id},  {"skiptoken", skiptoken}, {"nummer", documentNummer}, {"agendapuntId", agendapuntId}, {"soort", soort}, {"onderwerp", onderwerp}, {"datum", datum}, {"enclosure", enclosure}, {"bronDocument", bronDocument}, {"updated", updated}, {"bijgewerkt", bijgewerkt}, {"kamerstukdossierId", kamerstukdossierId}, {"volgnummer", volgnummer}, {"titel", titel}, {"citeerTitel", citeerTitel}, {"contentLength", contentLength}, {"contentType", contentType}, {"huidigeDocumentVersieId", huidigeDocumentVersieId}, {"vergaderjaar", vergaderjaar}, {"aanhangselnummer", aanhangselnummer},{"datumRegistratie", datumRegistratie}, {"datumOntvangst", datumOntvangst}}, category);
+          cerr << "Successfully inserted document with id: " << id << endl;
+        }
+        else if(auto child = node.child("content").child("zaak")) {
+	  
+          string gestartOp = child.child("gestartOp").child_value();
+          string onderwerp = child.child("onderwerp").child_value();
+          string titel = child.child("titel").child_value();
+          string zaakNummer = child.child("nummer").child_value();
+          string kabinetsappreciatie = child.child("kabinetsappreciatie").child_value();
+          string organisatie = child.child("organisatie").child_value();
+          string soort = child.child("soort").child_value();
+          string status = child.child("status").child_value();
+          string citeertitel =child.child("citeertitel").child_value();
+          string afgedaan =child.child("afgedaan").child_value();
+          string grootProject =child.child("grootProject").child_value();
+          string vergaderjaar =child.child("vergaderjaar").child_value();
+          string volgnummer =child.child("volgnummer").child_value();
 		
-	string kamerstukdossierId = child.child("kamerstukdossier").attribute("ref").value();
+          string kamerstukdossierId = child.child("kamerstukdossier").attribute("ref").value();
 
-	auto repl = [&](string name) {
-	  string lname = name;
-	  lname[0] = tolower(lname[0]);
-	  for(auto& a : child.children(lname.c_str())) {
-	    sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", a.attribute("ref").value()}, {"linkSoort", name}}, "link");
-	  }
-	};
-	repl("Activiteit");
-	repl("gerelateerdVanuit");
-	repl("vervangenVanuit");
-	repl("Agendapunt");
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", zaakNummer}, {"kamerstukdossierId", kamerstukdossierId}, {"titel", titel}, {"onderwerp", onderwerp}, {"bijgewerkt", bijgewerkt},{"gestartOp", gestartOp}, {"updated", updated},
-		       {"organisatie", organisatie},
-		       {"soort", soort},
-		       {"status", status},
-		       {"citeertitel", citeertitel},
-		       {"afgedaan", afgedaan},
-		       {"grootProject", grootProject},
-		       {"vergaderjaar", vergaderjaar},
-		       {"volgnummer", volgnummer},
-		       {"kabinetsappreciatie", kabinetsappreciatie}
-	  }, category);
+          auto repl = [&](string name) {
+            string lname = name;
+            lname[0] = tolower(lname[0]);
+            for(auto& a : child.children(lname.c_str())) {
+              sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", a.attribute("ref").value()}, {"linkSoort", name}}, "link");
+            }
+          };
+          repl("Activiteit");
+          repl("gerelateerdVanuit");
+          repl("vervangenVanuit");
+          repl("Agendapunt");
 	  
-      }
-      else if(auto child = node.child("content").child("kamerstukdossier")) {
-	string titel = child.child("titel").child_value();
-	int nummer = atoi(child.child("nummer").child_value());
-	string toevoeging = child.child("toevoeging").child_value();
-	string citeertitel = child.child("citeertitel").child_value();
-	string afgesloten = child.child("afgesloten").child_value();
-	int hoogsteVolgnummer = atoi(child.child("hoogsteVolgnummer").child_value());
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", nummer}, {"titel", titel}, {"afgesloten", afgesloten}, {"bijgewerkt", bijgewerkt},{"hoogsteVolgnummer", hoogsteVolgnummer}, {"updated", updated}, {"toevoeging", toevoeging}, {"citeertitel", citeertitel}}, category);
-      }
-      else if(auto child = node.child("content").child("ns1:toezegging")) {
-	/*
-{"ns1:aanmaakdatum": 100, "ns1:achternaam": 100, "ns1:achtervoegsel": 10,
-"ns1:activiteitNummer": 100, "ns1:datumNakoming": 53, "ns1:functie": 100,
-"ns1:initialen": 100, "ns1:kamerbriefNakoming": 53, "ns1:ministerie": 100,
-"ns1:naam": 100, "ns1:nummer": 100, "ns1:status": 100, "ns1:tekst": 100,
-"ns1:titulatuur": 100, "ns1:tussenvoegsel": 27, "ns1:voornaam": 100}
-
-Multi: {"ns1:isAanvullingOp", "ns1:isWijzigingVan"}
-Hasref: {"ns1:activiteit", "ns1:isAanvullingOp", "ns1:isHerhalingVan", "ns1:isWijzigingVan", "ns1:toegezegdAanFractie", "ns1:toegezegdAanPersoon"}
-	*/
-
-	auto repl = [&](string xname, string name) {
-	  for(auto& a : child.children(xname.c_str())) {
-	    sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", a.attribute("ref").value()}, {"linkSoort", name}}, "link");
-	  }
-	};
-	repl("ns1:isAanvullingOp", "aanvullingOp");
-	repl("ns1:isHerhalingVan", "herhalingVan");
-	repl("ns1:isWijzigingVan", "wijzigingVan");
-
-	string tekst = child.child("ns1:tekst").child_value();
-	string naamToezegger = child.child("ns1:naam").child_value();
-	string nummer = child.child("ns1:nummer").child_value();
-	string kamerbriefNakoming = child.child("ns1:kamerbriefNakoming").child_value();
-	string ministerie = child.child("ns1:ministerie").child_value();
-	string status = child.child("ns1:status").child_value();
-	string datum = child.child("ns1:aanmaakdatum").child_value();
-	string datumNakoming = child.child("ns1:datumNakoming").child_value();
-	
-	string activiteitId = child.child("ns1:activiteit").attribute("ref").value();
-	string fractieId = child.child("ns1:toegezegdAanFractie").attribute("ref").value();
-	string persoonId = child.child("ns1:toegezegdAanPersoon").attribute("ref").value();
-	//	Multi: {"ns1:isAanvullingOp", "ns1:isWijzigingVan"} XXX
-
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", nummer}, {"tekst", tekst},
-		       {"kamerbriefNakoming", kamerbriefNakoming}, {"bijgewerkt", bijgewerkt},
-		       {"datum", datum}, {"ministerie", ministerie},
-		       {"status", status},
-		       {"datumNakoming", datumNakoming},
-		       {"activiteitId", activiteitId},
-		       {"fractieId", fractieId},
-		       {"persoonId", persoonId},
-		       {"naamToezegger", naamToezegger},
-		       {"updated", updated}}, category);
-      }
-      else if(auto child = node.child("content").child("ns1:vergadering")) {
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", zaakNummer}, {"kamerstukdossierId", kamerstukdossierId}, {"titel", titel}, {"onderwerp", onderwerp}, {"bijgewerkt", bijgewerkt},{"gestartOp", gestartOp}, {"updated", updated},
+                 {"organisatie", organisatie},
+                 {"soort", soort},
+                 {"status", status},
+                 {"citeertitel", citeertitel},
+                 {"afgedaan", afgedaan},
+                 {"grootProject", grootProject},
+                 {"vergaderjaar", vergaderjaar},
+                 {"volgnummer", volgnummer},
+                 {"kabinetsappreciatie", kabinetsappreciatie}
+        }, category);
 	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+        }
+        else if(auto child = node.child("content").child("kamerstukdossier")) {
+          string titel = child.child("titel").child_value();
+          int nummer = safe_atoi(child.child("nummer").child_value());
+          string toevoeging = child.child("toevoeging").child_value();
+          string citeertitel = child.child("citeertitel").child_value();
+          string afgesloten = child.child("afgesloten").child_value();
+          int hoogsteVolgnummer = safe_atoi(child.child("hoogsteVolgnummer").child_value());
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", nummer}, {"titel", titel}, {"afgesloten", afgesloten}, {"bijgewerkt", bijgewerkt},{"hoogsteVolgnummer", hoogsteVolgnummer}, {"updated", updated}, {"toevoeging", toevoeging}, {"citeertitel", citeertitel}}, category);
+        }
+        else if(auto child = node.child("content").child("ns1:toezegging")) {
+          /*
+  {"ns1:aanmaakdatum": 100, "ns1:achternaam": 100, "ns1:achtervoegsel": 10,
+  "ns1:activiteitNummer": 100, "ns1:datumNakoming": 53, "ns1:functie": 100,
+  "ns1:initialen": 100, "ns1:kamerbriefNakoming": 53, "ns1:ministerie": 100,
+  "ns1:naam": 100, "ns1:nummer": 100, "ns1:status": 100, "ns1:tekst": 100,
+  "ns1:titulatuur": 100, "ns1:tussenvoegsel": 27, "ns1:voornaam": 100}
+
+  Multi: {"ns1:isAanvullingOp", "ns1:isWijzigingVan"}
+  Hasref: {"ns1:activiteit", "ns1:isAanvullingOp", "ns1:isHerhalingVan", "ns1:isWijzigingVan", "ns1:toegezegdAanFractie", "ns1:toegezegdAanPersoon"}
+  */
+
+          auto repl = [&](string xname, string name) {
+            for(auto& a : child.children(xname.c_str())) {
+              sqlw.addOrReplaceValue({{"skiptoken", skiptoken}, {"category", category}, {"van", id}, {"naar", a.attribute("ref").value()}, {"linkSoort", name}}, "link");
+            }
+          };
+          repl("ns1:isAanvullingOp", "aanvullingOp");
+          repl("ns1:isHerhalingVan", "herhalingVan");
+          repl("ns1:isWijzigingVan", "wijzigingVan");
+
+          string tekst = child.child("ns1:tekst").child_value();
+          string naamToezegger = child.child("ns1:naam").child_value();
+          string nummer = child.child("ns1:nummer").child_value();
+          string kamerbriefNakoming = child.child("ns1:kamerbriefNakoming").child_value();
+          string ministerie = child.child("ns1:ministerie").child_value();
+          string status = child.child("ns1:status").child_value();
+          string datum = child.child("ns1:aanmaakdatum").child_value();
+          string datumNakoming = child.child("ns1:datumNakoming").child_value();
 	  
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"soort", fields["ns1:soort"]},
-		       {"titel", fields["ns1:titel"]},
-		       {"zaal", fields["ns1:zaal"]},
-		       {"vergaderjaar", fields["ns1:vergaderjaar"]},
-		       {"nummer", atoi(fields["ns1:vergaderingNummer"].c_str())},
-		       {"datum", fields["ns1:datum"]},
-		       {"aanvangstijd", fields["ns1:aanvangstijd"]},
-		       {"sluiting", fields["ns1:sluiting"]}}, category);
+          string activiteitId = child.child("ns1:activiteit").attribute("ref").value();
+          string fractieId = child.child("ns1:toegezegdAanFractie").attribute("ref").value();
+          string persoonId = child.child("ns1:toegezegdAanPersoon").attribute("ref").value();
+          // Multi: {"ns1:isAanvullingOp", "ns1:isWijzigingVan"} XXX
+
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"nummer", nummer}, {"tekst", tekst},
+                 {"kamerbriefNakoming", kamerbriefNakoming}, {"bijgewerkt", bijgewerkt},
+                 {"datum", datum}, {"ministerie", ministerie},
+                 {"status", status},
+                 {"datumNakoming", datumNakoming},
+                 {"activiteitId", activiteitId},
+                 {"fractieId", fractieId},
+                 {"persoonId", persoonId},
+                 {"naamToezegger", naamToezegger},
+                 {"updated", updated}}, category);
+        }
+        else if(auto child = node.child("content").child("ns1:vergadering")) {
 	  
-      }
-      else if(auto child = node.child("content").child("ns1:verslag")) { 
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string vergaderingId = child2.child("ns1:vergadering").attribute("ref").value();
-	int64_t contentLength = atoi(child.attribute("ns1:contentLength").value());;
-	string contentType = child.attribute("ns1:contentType").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"soort", fields["ns1:soort"]},
-		       {"status", fields["ns1:status"]}, {"contentLength", contentLength},
-		       {"contentType", contentType},
-		       {"enclosure", enclosure},
-		       {"vergaderingId", vergaderingId}},
-	  category);
-      }
-      else if(auto child = node.child("content").child("persoon")) { 
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-
-	int64_t contentLength = atoi(child.attribute("tk:contentLength").value());
-	string contentType = child.attribute("tk:contentType").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"functie", fields["functie"]},
-		       {"initialen", fields["initialen"]},
-		       {"tussenvoegsel", fields["tussenvoegsel"]},
-		       {"achternaam", fields["achternaam"]},
-		       {"voornamen", fields["voornamen"]},
-		       {"roepnaam", fields["roepnaam"]},
-		       {"geboortedatum", fields["geboortedatum"]},
-		       {"geboorteplaats", fields["geboorteplaats"]},
-		       {"geboorteland", fields["geboorteland"]},
-		       {"overlijdensdatum", fields["overlijdensdatum"]},
-		       {"overlijdensplaats", fields["overlijdensplaats"]},
-			 
-		       {"geslacht", fields["geslacht"]},
-		       {"titels", fields["titels"]},
-		       {"enclosure", enclosure},
-		       {"contentLength", contentLength},
-		       {"contentType", contentType},
-		       {"woonplaats", fields["woonplaats"]},
-		       {"land", fields["land"]},
-		       {"nummer", atoi(fields["nummer"].c_str())}},
-	    
-	  category);
-      }
-      else if(auto child = node.child("content").child("fractie")) { 
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
 	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	// {"aantalStemmen": 66, "aantalZetels": 62, "afkorting": 100, "datumActief": 100, "datumInactief": 73, "naamEn": 100, "naamNl": 100, "nummer": 100}
- 
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"afkorting", fields["afkorting"]},
-		       {"datumActief", fields["datumActief"]},
-		       {"datumInactief", fields["datumInactief"]},
-		       {"naamEn", fields["naamEn"]},
-		       {"naam", fields["naamNl"]},
-		       {"nummer", atoi(fields["nummer"].c_str())},		       
-		       {"aantalStemmen", atoi(fields["aantalStemmen"].c_str())},
-		       {"aantalZetels", atoi(fields["aantalZetels"].c_str())}
-	  },	    
-	  category);
-      }
-      else if(auto child = node.child("content").child("besluit")) { 
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"soort", fields["ns1:soort"]},
+                 {"titel", fields["ns1:titel"]},
+                 {"zaal", fields["ns1:zaal"]},
+                 {"vergaderjaar", fields["ns1:vergaderjaar"]},
+                 {"nummer", safe_atoi(fields["ns1:vergaderingNummer"])},
+                 {"datum", fields["ns1:datum"]},
+                 {"aanvangstijd", fields["ns1:aanvangstijd"]},
+                 {"sluiting", fields["ns1:sluiting"]}}, category);
 	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+        }
+        else if(auto child = node.child("content").child("ns1:verslag")) { 
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string vergaderingId = child2.child("ns1:vergadering").attribute("ref").value();
+          int64_t contentLength = atoi(child.attribute("ns1:contentLength").value());
+          string contentType = child.attribute("ns1:contentType").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"soort", fields["ns1:soort"]},
+                 {"status", fields["ns1:status"]}, {"contentLength", contentLength},
+                 {"contentType", contentType},
+                 {"enclosure", enclosure},
+                 {"vergaderingId", vergaderingId}},
+            category);
+        }
+        else if(auto child = node.child("content").child("persoon")) { 
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+
+          int64_t contentLength = atoi(child.attribute("tk:contentLength").value());
+          string contentType = child.attribute("tk:contentType").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"functie", fields["functie"]},
+                 {"initialen", fields["initialen"]},
+                 {"tussenvoegsel", fields["tussenvoegsel"]},
+                 {"achternaam", fields["achternaam"]},
+                 {"voornamen", fields["voornamen"]},
+                 {"roepnaam", fields["roepnaam"]},
+                 {"geboortedatum", fields["geboortedatum"]},
+                 {"geboorteplaats", fields["geboorteplaats"]},
+                 {"geboorteland", fields["geboorteland"]},
+                 {"overlijdensdatum", fields["overlijdensdatum"]},
+                 {"overlijdensplaats", fields["overlijdensplaats"]},
+                 
+                 {"geslacht", fields["geslacht"]},
+                 {"titels", fields["titels"]},
+                 {"enclosure", enclosure},
+                 {"contentLength", contentLength},
+                 {"contentType", contentType},
+                 {"woonplaats", fields["woonplaats"]},
+                 {"land", fields["land"]},
+                 {"nummer", safe_atoi(fields["nummer"])}},
+            
+            category);
+        }
+        else if(auto child = node.child("content").child("fractie")) { 
 	  
-	/*
-	  agendapunt='' stemmingsSoort='' besluitSoort='V.k.a. - voor kennisgeving aannemen (commissie)' besluitTekst='Voor kennisgeving aannemen ' opmerking='De vaste commissie voor Defensie heeft de staatssecretaris van Defensie gevraagd om een reactie. De commissie voor de Rijksuitgaven wacht het antwoord met belangstelling af.' status='Besluit' agendapuntZaakBesluitVolgorde='1' zaak='' 
-	*/
-
-	string agendapuntId = child2.child("agendapunt").attribute("ref").value();
-	string zaakId = child2.child("zaak").attribute("ref").value();
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          // {"aantalStemmen": 66, "aantalZetels": 62, "afkorting": 100, "datumActief": 100, "datumInactief": 73, "naamEn": 100, "naamNl": 100, "nummer": 100}
+   
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"afkorting", fields["afkorting"]},
+                 {"datumActief", fields["datumActief"]},
+                 {"datumInactief", fields["datumInactief"]},
+                 {"naamEn", fields["naamEn"]},
+                 {"naam", fields["naamNl"]},
+                 {"nummer", safe_atoi(fields["nummer"])},		       
+                 {"aantalStemmen", safe_atoi(fields["aantalStemmen"])},
+                 {"aantalZetels", safe_atoi(fields["aantalZetels"])}
+        },	    
+        category);
+        }
+        else if(auto child = node.child("content").child("besluit")) { 
 	  
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"soort", fields["besluitSoort"]},
-		       {"stemmingSoort", fields["stemmingSoort"]},
-		       {"tekst", fields["besluitTekst"]},
-		       {"opmerking", fields["opmerking"]},
-		       {"agendapuntZaakBesluitVolgorde", atoi(fields["agendapuntZaakBesluitVolgorde"].c_str())},
-		       {"status", fields["status"]},
-		       {"agendapuntId", agendapuntId},
-		       {"zaakId", zaakId}},
-	  category);
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
 	  
+          /*
+            agendapunt='' stemmingsSoort='' besluitSoort='V.k.a. - voor kennisgeving aannemen (commissie)' besluitTekst='Voor kennisgeving aannemen ' opmerking='De vaste commissie voor Defensie heeft de staatssecretaris van Defensie gevraagd om een reactie. De commissie voor de Rijksuitgaven wacht het antwoord met belangstelling af.' status='Besluit' agendapuntZaakBesluitVolgorde='1' zaak='' 
+          */
+
+          string agendapuntId = child2.child("agendapunt").attribute("ref").value();
+          string zaakId = child2.child("zaak").attribute("ref").value();
 	  
-      }
-      else if(auto child = node.child("content").child("stemming")) {
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"soort", fields["besluitSoort"]},
+                 {"stemmingSoort", fields["stemmingSoort"]},
+                 {"tekst", fields["besluitTekst"]},
+                 {"opmerking", fields["opmerking"]},
+                 {"agendapuntZaakBesluitVolgorde", safe_atoi(fields["agendapuntZaakBesluitVolgorde"])},
+                 {"status", fields["status"]},
+                 {"agendapuntId", agendapuntId},
+                 {"zaakId", zaakId}},
+            category);
 	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+          
+        }
+        else if(auto child = node.child("content").child("stemming")) {
 	  
-	string besluitId = child2.child("besluit").attribute("ref").value();
-	string fractieId = child2.child("fractie").attribute("ref").value();
-	string persoonId = child2.child("persoon").attribute("ref").value();
-
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"soort", fields["soort"]},
-		       {"actorNaam", fields["actorNaam"]},
-		       {"actorFractie", fields["actorFractie"]},
-		       {"fractieGrootte", atoi(fields["fractieGrootte"].c_str())},
-		       {"besluitId", besluitId},
-		       {"fractieId", fractieId},
-		       {"persoonId", persoonId},
-		       {"vergissing", fields["vergissing"]}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("reservering")) {
-	
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
 	  
-	string activiteitId = child2.child("activiteit").attribute("ref").value();
-	string zaalId = child2.child("zaal").attribute("ref").value();
+          string besluitId = child2.child("besluit").attribute("ref").value();
+          string fractieId = child2.child("fractie").attribute("ref").value();
+          string persoonId = child2.child("persoon").attribute("ref").value();
 
-	// {"activiteitNummer": 100, "nummer": 100, "statusCode": 38, "statusNaam": 38}
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"nummer", fields["nummer"]},
-		       {"statusCode", fields["statusCode"]},
-		       {"statusNaam", fields["statusNaam"]},
-		       {"activiteitId", activiteitId},
-		       {"zaalId", zaalId},
-		       {"activiteitNummer", fields["activiteitNummer"]}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("zaal")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	  
-	// {"naam": 100, "sysCode": 100}
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"soort", fields["soort"]},
+                 {"actorNaam", fields["actorNaam"]},
+                 {"actorFractie", fields["actorFractie"]},
+                 {"fractieGrootte", safe_atoi(fields["fractieGrootte"])},
+                 {"besluitId", besluitId},
+                 {"fractieId", fractieId},
+                 {"persoonId", persoonId},
+                 {"vergissing", fields["vergissing"]}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("reservering")) {
+        
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          
+          string activiteitId = child2.child("activiteit").attribute("ref").value();
+          string zaalId = child2.child("zaal").attribute("ref").value();
 
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"naam", fields["naam"]},
-		       {"sysCode", fields["sysCode"]}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("persoonReis")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	  
-	//	{"bestemming": 100, "betaaldDoor": 99, "doel": 99, "gewicht": 100, "totEnMet": 99, "van": 99}
-	string persoonId = child2.child("persoon").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"bestemming", fields["bestemming"]},
-		       {"betaaldDoor", fields["betaaldDoor"]},
-		       {"doel", fields["doel"]},
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"van", fields["van"]},
-		       {"totEnMet", fields["totEnMet"]},
-		       {"persoonId", persoonId}
+          // {"activiteitNummer": 100, "nummer": 100, "statusCode": 38, "statusNaam": 38}
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"nummer", fields["nummer"]},
+                 {"statusCode", fields["statusCode"]},
+                 {"statusNaam", fields["statusNaam"]},
+                 {"activiteitId", activiteitId},
+                 {"zaalId", zaalId},
+                 {"activiteitNummer", fields["activiteitNummer"]}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("zaal")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          
+          // {"naam": 100, "sysCode": 100}
 
-		       
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("persoonNevenfunctie")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	//{"gewicht": 100, "isActief": 9, "omschrijving": 100}
-	//Hasref: {"persoon"}
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"naam", fields["naam"]},
+                 {"sysCode", fields["sysCode"]}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("persoonReis")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          
+          // {"bestemming": 100, "betaaldDoor": 99, "doel": 99, "gewicht": 100, "totEnMet": 99, "van": 99}
+          string persoonId = child2.child("persoon").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"bestemming", fields["bestemming"]},
+                 {"betaaldDoor", fields["betaaldDoor"]},
+                 {"doel", fields["doel"]},
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"van", fields["van"]},
+                 {"totEnMet", fields["totEnMet"]},
+                 {"persoonId", persoonId}
 
-	string persoonId = child2.child("persoon").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"omschrijving", fields["omschrijving"]},
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"isActief", fields["isActief"]},
-		       {"persoonId", persoonId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("persoonNevenfunctieInkomsten")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	/*
-{"bedrag": 75, "bedragAchtervoegsel": 0, "bedragSoort": 69, "bedragValuta": 96, "bedragVoorvoegsel": 12, "frequentie": 52, "frequentieBeschrijving": 2, "jaar": 100, "opmerking": 33}
-Multi: {}
-Hasref: {"persoonNevenfunctie"}
-	*/
-	//Hasref: {"persoon"}
+                 
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("persoonNevenfunctie")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          //{"gewicht": 100, "isActief": 9, "omschrijving": 100}
+          //Hasref: {"persoon"}
 
-	string persoonNevenFunctieId = child2.child("persoonNevenfunctie").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"bedrag", atof(fields["bedrag"].c_str())},
-		       {"bedragAchtervoegsel", fields["bedragAchtervoegsel"]},
-		       {"bedragVoorvoegsel", fields["bedragVoorvoegsel"]},
-		       {"bedragSoort", fields["bedragSoort"]},
-		       {"bedragValuta", fields["bedragValuta"]},
-		       {"frequentie", fields["frequentie"]},
-		       {"frequentieBeschrijving", fields["frequentieBeschrijving"]},
-		       {"jaar", atoi(fields["jaar"].c_str())},
-		       {"opmerking", fields["opmerking"]},
-		       {"persoonNevenFunctieId", persoonNevenFunctieId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("fractieZetel")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	//{"gewicht": 100}
-	// Hasref: {"fractie"}
+          string persoonId = child2.child("persoon").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"omschrijving", fields["omschrijving"]},
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"isActief", fields["isActief"]},
+                 {"persoonId", persoonId}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("persoonNevenfunctieInkomsten")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          /*
+  {"bedrag": 75, "bedragAchtervoegsel": 0, "bedragSoort": 69, "bedragValuta": 96, "bedragVoorvoegsel": 12, "frequentie": 52, "frequentieBeschrijving": 2, "jaar": 100, "opmerking": 33}
+  Multi: {}
+  Hasref: {"persoonNevenfunctie"}
+  */
+          //Hasref: {"persoon"}
 
-	string fractieId = child2.child("fractie").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"fractieId", fractieId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("fractieZetelPersoon")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	//{"functie": 100, "totEnMet": 86, "van": 100}
-	//Hasref: {"fractieZetel", "persoon"}
+          string persoonNevenFunctieId = child2.child("persoonNevenfunctie").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"bedrag", safe_atof(fields["bedrag"])},
+                 {"bedragAchtervoegsel", fields["bedragAchtervoegsel"]},
+                 {"bedragVoorvoegsel", fields["bedragVoorvoegsel"]},
+                 {"bedragSoort", fields["bedragSoort"]},
+                 {"bedragValuta", fields["bedragValuta"]},
+                 {"frequentie", fields["frequentie"]},
+                 {"frequentieBeschrijving", fields["frequentieBeschrijving"]},
+                 {"jaar", safe_atoi(fields["jaar"])},
+                 {"opmerking", fields["opmerking"]},
+                 {"persoonNevenFunctieId", persoonNevenFunctieId}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("fractieZetel")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          //{"gewicht": 100}
+          // Hasref: {"fractie"}
 
-	string fractieZetelId = child2.child("fractieZetel").attribute("ref").value();
-	string persoonId = child2.child("persoon").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"functie", fields["functie"]},
-		       {"van", fields["van"]},
-		       {"totEnMet", fields["totEnMet"]},
-		       {"fractieZetelId", fractieZetelId},
-		       {"persoonId", persoonId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("fractieZetelVacature")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	//{"functie": 100, "totEnMet": 86, "van": 100}
-	//Hasref: {"fractieZetel"}
+          string fractieId = child2.child("fractie").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"fractieId", fractieId}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("fractieZetelPersoon")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          //{"functie": 100, "totEnMet": 86, "van": 100}
+          //Hasref: {"fractieZetel", "persoon"}
 
-	string fractieZetelId = child2.child("fractieZetel").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"functie", fields["functie"]},
-		       {"van", fields["van"]},
-		       {"totEnMet", fields["totEnMet"]},
-		       {"fractieZetelId", fractieZetelId}
-	  },
-	  category);
-      }
+          string fractieZetelId = child2.child("fractieZetel").attribute("ref").value();
+          string persoonId = child2.child("persoon").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"functie", fields["functie"]},
+                 {"van", fields["van"]},
+                 {"totEnMet", fields["totEnMet"]},
+                 {"fractieZetelId", fractieZetelId},
+                 {"persoonId", persoonId}
+        },
+        category);
+        }
+        else if(auto child = node.child("content").child("fractieZetelVacature")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          //{"functie": 100, "totEnMet": 86, "van": 100}
+          //Hasref: {"fractieZetel"}
 
-      else if(auto child = node.child("content").child("documentActor")) {
-	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+          string fractieZetelId = child2.child("fractieZetel").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"functie", fields["functie"]},
+                 {"van", fields["van"]},
+                 {"totEnMet", fields["totEnMet"]},
+                 {"fractieZetelId", fractieZetelId}
+        },
+        category);
+        }
 
-	string documentId = child.child("document").attribute("ref").value();
-	string persoonId = child.child("persoon").attribute("ref").value();
-	string fractieId = child.child("fractie").attribute("ref").value();
-	string commissieId = child.child("commissie").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"naam", fields["actorNaam"]},
-		       {"fractie", fields["actorFractie"]},
-		       {"functie", fields["functie"]},
-		       {"relatie", fields["relatie"]},
-		       {"documentId", documentId},
-		       {"commissieId", commissieId},
-		       {"persoonId", persoonId},
-		       {"fractieId", fractieId}},
-	  category);
+        else if(auto child = node.child("content").child("documentActor")) {
+          
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
 
-      }
-      else if(auto child = node.child("content").child("zaakActor")) {
-	auto child2 = *node.child("content").begin();
+          string documentId = child.child("document").attribute("ref").value();
+          string persoonId = child.child("persoon").attribute("ref").value();
+          string fractieId = child.child("fractie").attribute("ref").value();
+          string commissieId = child.child("commissie").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"naam", fields["actorNaam"]},
+                 {"fractie", fields["actorFractie"]},
+                 {"functie", fields["functie"]},
+                 {"relatie", fields["relatie"]},
+                 {"documentId", documentId},
+                 {"commissieId", commissieId},
+                 {"persoonId", persoonId},
+                 {"fractieId", fractieId}},
+            category);
 
-	map<string,string> fields;
-	for(const auto&c : child2) {
+        }
+        else if(auto child = node.child("content").child("zaakActor")) {
+          auto child2 = *node.child("content").begin();
 
-	  fields[c.name()]= c.child_value();
-	}
+          map<string,string> fields;
+          for(const auto&c : child2) {
 
-	string zaakId = child.child("zaak").attribute("ref").value();
-	string persoonId = child.child("persoon").attribute("ref").value();
-	string fractieId = child.child("fractie").attribute("ref").value();
-	string commissieId = child.child("commissie").attribute("ref").value();
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"naam", fields["actorNaam"]},
-		       {"fractie", fields["actorFractie"]},
-		       {"functie", fields["functie"]},
-		       {"relatie", fields["relatie"]},
-		       {"afkorting", fields["actorAfkorting"]},
-		       {"zaakId", zaakId},
-		       {"persoonId", persoonId},
-		       {"commissieId", commissieId},
-		       {"fractieId", fractieId}},
-	  category);
+            fields[c.name()]= c.child_value();
+          }
 
-      }
+          string zaakId = child.child("zaak").attribute("ref").value();
+          string persoonId = child.child("persoon").attribute("ref").value();
+          string fractieId = child.child("fractie").attribute("ref").value();
+          string commissieId = child.child("commissie").attribute("ref").value();
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken", skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"naam", fields["actorNaam"]},
+                 {"fractie", fields["actorFractie"]},
+                 {"functie", fields["functie"]},
+                 {"relatie", fields["relatie"]},
+                 {"afkorting", fields["actorAfkorting"]},
+                 {"zaakId", zaakId},
+                 {"persoonId", persoonId},
+                 {"commissieId", commissieId},
+                 {"fractieId", fractieId}},
+            category);
 
-      else if(auto child = node.child("content").child("agendapunt")) {
-	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string activiteitId = child.child("activiteit").attribute("ref").value();
-	  
-	// activiteit='' nummer='2008P01291' onderwerp='Beantwoording vragen commissie over het evaluatierapport Belastinguitgaven op het terrein van de accijnzen' aanvangstijd='' eindtijd='' volgorde='40' rubriek='Stukken/brieven (als eerste) ondertekend door de staatssecretaris van Financiën' noot='De antwoorden op de door de commissie gestelde vragen zijn ontvangen op 15 juli 2008 (31200-IXB, nr. 35)' status='Vrijgegeven' 
-	  
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"nummer", fields["nummer"]},
-		       {"onderwerp", fields["onderwerp"]},
-		       {"aanvangstijd", fields["aanvangstijd"]},
-		       {"eindtijd", fields["eindtijd"]},
-		       {"volgorde", atoi(fields["volgorde"].c_str())},
-		       {"rubriek", fields["rubriek"]},
-		       {"noot", fields["noot"]},
-		       {"status", fields["status"]},
-		       {"activiteitId", activiteitId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("persoonGeschenk")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string persoonId = child.child("persoon").attribute("ref").value();
+        }
 
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, {"omschrijving", fields["omschrijving"]},
-		       {"datum", fields["datum"]},
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"persoonId", persoonId}
-	  },
-	  category);
+        else if(auto child = node.child("content").child("agendapunt")) {
+          
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string activiteitId = child.child("activiteit").attribute("ref").value();
+          
+          // activiteit='' nummer='2008P01291' onderwerp='Beantwoording vragen commissie over het evaluatierapport Belastinguitgaven op het terrein van de accijnzen' aanvangstijd='' eindtijd='' volgorde='40' rubriek='Stukken/brieven (als eerste) ondertekend door de staatssecretaris van Financiën' noot='De antwoorden op de door de commissie gestelde vragen zijn ontvangen op 15 juli 2008 (31200-IXB, nr. 35)' status='Vrijgegeven' 
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"nummer", fields["nummer"]},
+                 {"onderwerp", fields["onderwerp"]},
+                 {"aanvangstijd", fields["aanvangstijd"]},
+                 {"eindtijd", fields["eindtijd"]},
+                 {"volgorde", safe_atoi(fields["volgorde"])},
+                 {"rubriek", fields["rubriek"]},
+                 {"noot", fields["noot"]},
+                 {"status", fields["status"]},
+                 {"activiteitId", activiteitId}
+          },
+          category);
+        }
+        else if(auto child = node.child("content").child("persoonGeschenk")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string persoonId = child.child("persoon").attribute("ref").value();
 
-      }
-      else if(auto child = node.child("content").child("documentVersie")) {
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, {"omschrijving", fields["omschrijving"]},
+                 {"datum", fields["datum"]},
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"persoonId", persoonId}
+          },
+          category);
 
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string documentId = child.child("document").attribute("ref").value();
+        }
+        else if(auto child = node.child("content").child("documentVersie")) {
 
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"datum", fields["datum"]},
-		       {"extensie", fields["extensie"]},
-		       {"externeidentifier", fields["externeidentifier"]},
-		       {"status", fields["status"]},
-		       {"versienummer", atoi(fields["versienummer"].c_str())},
-		       {"bestandsgrootte", atoi(fields["bestandsgrootte"].c_str())},
-		       {"documentId", documentId}
-	  },
-	  category);
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string documentId = child.child("document").attribute("ref").value();
 
-      }
-      else if(auto child = node.child("content").child("commissieContactinformatie")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string commissieId = child.child("commissie").attribute("ref").value();
-	/*
-{"gewicht": 100, "soort": 100, "waarde": 100}
-Multi: {}
-Hasref: {"commissie"}
-	*/
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"soort", fields["soort"]},
-		       {"waarde", fields["waarde"]},
-		       {"commissieId", commissieId}
-	  },
-	  category);
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"datum", fields["datum"]},
+                 {"extensie", fields["extensie"]},
+                 {"externeidentifier", fields["externeidentifier"]},
+                 {"status", fields["status"]},
+                 {"versienummer", safe_atoi(fields["versienummer"])},
+                 {"bestandsgrootte", safe_atoi(fields["bestandsgrootte"])},
+                 {"documentId", documentId}
+          },
+          category);
 
-      }
-      else if(auto child = node.child("content").child("commissieZetel")) {
+        }
+        else if(auto child = node.child("content").child("commissieContactinformatie")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string commissieId = child.child("commissie").attribute("ref").value();
+          /*
+  {"gewicht": 100, "soort": 100, "waarde": 100}
+  Multi: {}
+  Hasref: {"commissie"}
+  */
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"soort", fields["soort"]},
+                 {"waarde", fields["waarde"]},
+                 {"commissieId", commissieId}
+          },
+          category);
 
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string commissieId = child.child("commissie").attribute("ref").value();
-	/*
-{"gewicht": 100}
-Multi: {}
-Hasref: {"commissie"}
-	*/
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated}, 
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"commissieId", commissieId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("commissieZetelVastPersoon")) {
+        }
+        else if(auto child = node.child("content").child("commissieZetel")) {
 
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string commissieZetelId = child.child("commissieZetel").attribute("ref").value();
-	string persoonId = child.child("persoon").attribute("ref").value();
-	/*
-	  CommissieZetelVastPersoon: 
-	  {"functie": 100, "totEnMet": 91, "van": 100}
-	  Multi: {}
-	  Hasref: {"commissieZetel", "persoon"}
-	*/
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated},
-		       {"functie", fields["functie"]},
-		       {"totEnMet", fields["totEnMet"]},
-		       {"van", fields["van"]},		       
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"commissieZetelId", commissieZetelId},
-		       {"persoonId", persoonId}
-	  },
-	  category);
-      }
-      else if(auto child = node.child("content").child("commissieZetelVervangerPersoon")) {
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
-	string commissieZetelId = child.child("commissieZetel").attribute("ref").value();
-	string persoonId = child.child("persoon").attribute("ref").value();
-	/*
-	  CommissieZetelVastPersoon: 
-	  {"functie": 100, "totEnMet": 91, "van": 100}
-	  Multi: {}
-	  Hasref: {"commissieZetel", "persoon"}
-	*/
-	
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated},
-		       {"functie", fields["functie"]},
-		       {"totEnMet", fields["totEnMet"]},
-		       {"van", fields["van"]},		       
-		       {"gewicht", atoi(fields["gewicht"].c_str())},
-		       {"commissieZetelId", commissieZetelId},
-		       {"persoonId", persoonId}
-	  },
-	  category);
-      }
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string commissieId = child.child("commissie").attribute("ref").value();
+          /*
+  {"gewicht": 100}
+  Multi: {}
+  Hasref: {"commissie"}
+  */
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated}, 
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"commissieId", commissieId}
+          },
+          category);
+        }
+        else if(auto child = node.child("content").child("commissieZetelVastPersoon")) {
 
-      else if(auto child = node.child("content").child("activiteitActor")) {
-	
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string commissieZetelId = child.child("commissieZetel").attribute("ref").value();
+          string persoonId = child.child("persoon").attribute("ref").value();
+          /*
+            CommissieZetelVastPersoon: 
+            {"functie": 100, "totEnMet": 91, "van": 100}
+            Multi: {}
+            Hasref: {"commissieZetel", "persoon"}
+          */
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated},
+                 {"functie", fields["functie"]},
+                 {"totEnMet", fields["totEnMet"]},
+                 {"van", fields["van"]},		       
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"commissieZetelId", commissieZetelId},
+                 {"persoonId", persoonId}
+          },
+          category);
+        }
+        else if(auto child = node.child("content").child("commissieZetelVervangerPersoon")) {
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+          string commissieZetelId = child.child("commissieZetel").attribute("ref").value();
+          string persoonId = child.child("persoon").attribute("ref").value();
+          /*
+            CommissieZetelVastPersoon: 
+            {"functie": 100, "totEnMet": 91, "van": 100}
+            Multi: {}
+            Hasref: {"commissieZetel", "persoon"}
+          */
+          
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated},
+                 {"functie", fields["functie"]},
+                 {"totEnMet", fields["totEnMet"]},
+                 {"van", fields["van"]},		       
+                 {"gewicht", safe_atoi(fields["gewicht"])},
+                 {"commissieZetelId", commissieZetelId},
+                 {"persoonId", persoonId}
+          },
+          category);
+        }
 
-	string persoonId = child.child("persoon").attribute("ref").value();
-	string activiteitId = child.child("activiteit").attribute("ref").value();
-	string fractieId = child.child("fractie").attribute("ref").value();
-	string commissieId = child.child("commissie").attribute("ref").value();
+        else if(auto child = node.child("content").child("activiteitActor")) {
+         
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
 
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated},
-		       {"functie", fields["functie"]},
-		       {"relatie", fields["relatie"]},
-		       {"naam", fields["actorNaam"]},
-		       {"fractie", fields["actorFractie"]},
-		       {"spreektijd", fields["spreektijd"]},
-		       {"volgorde", atoi(fields["volgorde"].c_str())},
-		       {"activiteitId", activiteitId},
-		       {"persoonId", persoonId},
-		       {"fractieId", fractieId},
-		       {"commissieId", commissieId}
-	  },
-	  category);
+          string persoonId = child.child("persoon").attribute("ref").value();
+          string activiteitId = child.child("activiteit").attribute("ref").value();
+          string fractieId = child.child("fractie").attribute("ref").value();
+          string commissieId = child.child("commissie").attribute("ref").value();
 
-      }
-      else if(auto child = node.child("content").child("commissie")) {
-	  
-	auto child2 = *node.child("content").begin();
-	map<string,string> fields;
-	for(const auto&c : child2) {
-	  fields[c.name()]= c.child_value();
-	}
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated},
+                 {"functie", fields["functie"]},
+                 {"relatie", fields["relatie"]},
+                 {"naam", fields["actorNaam"]},
+                 {"fractie", fields["actorFractie"]},
+                 {"spreektijd", fields["spreektijd"]},
+                 {"volgorde", safe_atoi(fields["volgorde"])},
+                 {"activiteitId", activiteitId},
+                 {"persoonId", persoonId},
+                 {"fractieId", fractieId},
+                 {"commissieId", commissieId}
+          },
+          category);
 
-	// nummer='62750' soort='Dienst Commissieondersteuning Internationaal en Ruimtelijk' afkorting='AM' naamNl='Vaste commissie voor Asiel en Migratie' naamEn='Asylum and Migration' naamWebNl='Asiel en Migratie' naamWebEn='Asylum and Migration' inhoudsopgave='Vaste commissies' datumActief='2024-07-02' datumInactief='' 
-	sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
-		       {"updated", updated},
-		       {"nummer", atoi(fields["nummer"].c_str())},
-		       {"soort", fields["soort"]},
-		       {"afkorting", fields["afkorting"]},
-		       {"naam", fields["naamNl"]},
-		       {"naamEn", fields["naamEn"]},
-		       {"webNaam", fields["naamWebNl"]},
-		       {"inhoudsopgave", fields["inhoudsopgave"]},
-		       {"datumActief", fields["dactumActief"]},
-		       {"datumInactief", fields["dactumInactief"]}
-	  },
-	  category);
+        }
+        else if(auto child = node.child("content").child("commissie")) {
+          
+          auto child2 = *node.child("content").begin();
+          map<string,string> fields;
+          for(const auto&c : child2) {
+            fields[c.name()]= c.child_value();
+          }
+
+          // nummer='62750' soort='Dienst Commissieondersteuning Internationaal en Ruimtelijk' afkorting='AM' naamNl='Vaste commissie voor Asiel en Migratie' naamEn='Asylum and Migration' naamWebNl='Asiel en Migratie' naamWebEn='Asylum and Migration' inhoudsopgave='Vaste commissies' datumActief='2024-07-02' datumInactief='' 
+          sqlw.addOrReplaceValue({{"id", id}, {"skiptoken",skiptoken}, {"bijgewerkt", bijgewerkt},
+                 {"updated", updated},
+                 {"nummer", safe_atoi(fields["nummer"])},
+                 {"soort", fields["soort"]},
+                 {"afkorting", fields["afkorting"]},
+                 {"naam", fields["naamNl"]},
+                 {"naamEn", fields["naamEn"]},
+                 {"webNaam", fields["naamWebNl"]},
+                 {"inhoudsopgave", fields["inhoudsopgave"]},
+                 {"datumActief", fields["dactumActief"]},
+                 {"datumInactief", fields["dactumInactief"]}
+          },
+          category);
+        }
+      } catch (const std::bad_variant_access& e) {
+        cerr << "Variant access error for id " << id << " in category " << category << ": " << e.what() << endl;
+        // Log the content structure to help debug
+        if (auto content = node.child("content")) {
+          cerr << "Content structure:" << endl;
+          for (auto& child : content) {
+            cerr << "  Node: " << child.name() << endl;
+            for (auto& attr : child.attributes()) {
+              cerr << "    Attribute: " << attr.name() << "=" << attr.value() << endl;
+            }
+          }
+        }
+        throw; // Re-throw after logging
+      } catch (const std::exception& e) {
+        cerr << "Other error for id " << id << " in category " << category << ": " << e.what() << endl;
+        throw;
       }
     }
     cout<<"Done with "<<category <<" - saw "<<numentries<<" entries, "<<adds.size()<<" uniqe adds, "<<dels.size()<<" unique delete requests"<<endl;

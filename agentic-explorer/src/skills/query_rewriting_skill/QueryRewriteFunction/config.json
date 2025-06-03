@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "description": "Herschrijft een gebruikersvraag tot een zelfstandige zoekopdracht van max 50 woorden.",
+  "type": "completion",
+  "input_variables": [
+    {"name": "question", "description": "De originele gebruikersvraag"}
+  ],
+  "execution_settings": {
+    "default": {
+      "max_tokens": 60,
+      "temperature": 0.2
+    }
+  }
+} 

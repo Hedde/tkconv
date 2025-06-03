@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="nl" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tweede Kamer AI - Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+            },
+            'tk-blue': {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              300: '#93c5fd',
+              400: '#60a5fa',
+              500: '#1e40af',
+              600: '#1d4ed8',
+              700: '#1e3a8a',
+              800: '#1e2a5a',
+              900: '#0f1729',
+            },
+            accent: {
+              500: '#1e40af',
+              600: '#1d4ed8',
+              700: '#1e3a8a',
+            }
+          },
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .thinking-dot {
+      animation: thinking 1.4s ease-in-out infinite;
+    }
+    
+    .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+    
+    @keyframes thinking {
+      0%, 60%, 100% { 
+        opacity: 0.3; 
+        transform: scale(0.8);
+      }
+      30% { 
+        opacity: 1; 
+        transform: scale(1);
+      }
+    }
+  </style>
+</head>
+
+<body class="font-sans">
+  <div class="fixed inset-0 bg-gradient-to-br from-tk-blue-50 via-blue-50 to-slate-50 -z-10"></div>
+  <div class="min-h-screen flex flex-col">
+    
+    <!-- Header -->
+    <header class="border-b border-white/20 bg-white/80 backdrop-blur-sm">
+      <div class="max-w-4xl mx-auto px-6 py-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-4">
+            <button onclick="goToWelcome()" class="flex items-center space-x-3 hover:opacity-70 transition-opacity">
+              <img src="images/tweede-kamer_logo.png" alt="Tweede Kamer" class="h-10 w-auto">
+              <div class="text-left">
+                <div class="text-xl font-semibold text-tk-blue-700">AI Assistent</div>
+              </div>
+            </button>
+          </div>
+          <div class="flex items-center space-x-4">
+            <button onclick="resetChat()" class="text-sm text-tk-blue-600 hover:text-tk-blue-800 transition-colors">
+              Nieuw gesprek
+            </button>
+            <div class="hidden sm:flex items-center space-x-2 text-sm text-slate-600 bg-white/60 px-3 py-1.5 rounded-full border border-white/40">
+              <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span class="font-medium">Online</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Chat Content -->
+    <div class="flex-1">
+      <div class="max-w-3xl mx-auto px-6 py-8">
+        <!-- Chat Messages -->
+        <div id="output" class="space-y-8 pb-32">
+          <!-- Messages will be added here dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Sticky Input Area -->
+    <div class="fixed bottom-0 left-0 right-0 border-t border-white/20 bg-white/90 backdrop-blur-sm">
+      <div class="max-w-3xl mx-auto px-6 py-4">
+        <div class="bg-white rounded-2xl shadow-lg border border-tk-blue-200 relative">
+          <div class="flex">
+            <textarea id="question" 
+                      class="grow m-4 outline-none focus:outline-none active:border-transparent resize-none h-16 text-slate-800 placeholder-slate-500" 
+                      placeholder="Stel een vervolgvraag..." 
+                      rows="2"
+                      oninput="autoResize(this); updateCharCount(this);"></textarea>
+          </div>
+          
+          <div class="flex gap-2 items-center absolute right-2 bottom-2">
+            <div id="chat-char-count" class="text-xs text-slate-400">0/1000</div>
+            <button id="send-btn" 
+                    onclick="sendQuestion()" 
+                    class="bg-gradient-to-r from-tk-blue-600 to-tk-blue-700 hover:from-tk-blue-700 hover:to-tk-blue-800 rounded-full text-white w-8 h-8 flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(-5deg) translate(-1px, 1px)">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // Character count functionality
+    function updateCharCount(textarea) {
+      const counter = document.getElementById('chat-char-count');
+      if (textarea && counter) {
+        const length = textarea.value.length;
+        counter.textContent = `${length}/1000`;
+        if (length > 1000) {
+          counter.classList.add('text-red-500');
+          counter.classList.remove('text-slate-400');
+        } else {
+          counter.classList.add('text-slate-400');
+          counter.classList.remove('text-red-500');
+        }
+      }
+    }
+
+    // Auto resize textarea
+    function autoResize(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    }
+
+    // Scroll to bottom when new messages are added
+    function scrollToBottom() {
+      setTimeout(() => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }, 100);
+    }
+
+    // Override the original functions to use our scroll method
+    const originalAppendMessage = window.appendMessage;
+    if (originalAppendMessage) {
+      window.appendMessage = function(...args) {
+        const result = originalAppendMessage.apply(this, args);
+        scrollToBottom();
+        return result;
+      };
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html> 

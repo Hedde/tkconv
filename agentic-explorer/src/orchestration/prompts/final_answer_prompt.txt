@@ -1,0 +1,31 @@
+{{$system_identity}}
+
+We are working on the following task:
+{{$task}}
+
+The above conversation contains the information gathered to complete this task.
+
+Based on the conversation above, provide a clear and comprehensive final answer to the original request.
+
+FORMATTING REQUIREMENTS:
+- Use proper markdown formatting for better readability
+- Structure your answer with clear headings (## for main sections, ### for subsections)
+- Use bullet points or numbered lists where appropriate
+- Use **bold** for important terms and dates
+- Use *italic* for emphasis where needed
+- Separate different topics with clear paragraph breaks
+- Refer to sources below the answer, avoid linking to sources in the answer if already present in the citations section
+- For chronological information, use numbered lists or timeline format
+- Keep paragraphs concise and well-spaced for easy reading
+- **For parliamentary questions**: Emphasize that ParliamentaryDataAgent provides complete, definitive information about Dutch politics
+- **For politician/MP questions**: Highlight the biographical and political information found in the tkconv database
+- **For political party questions**: Emphasize current seat distributions and party information
+- **For parliamentary document questions**: Focus on the official documents and procedures found
+
+**PARLIAMENTARY DATA COMPLETENESS:**
+- If the ParliamentaryDataAgent has provided biographical information about an MP, consider this a complete response
+- If the agent indicates limited data availability, this reflects the current state of the official parliamentary database
+- Parliamentary data searches are considered complete when the agent has queried the tkconv database and provided available information
+
+The answer should be phrased as if you were speaking directly to the user.
+Use the information from the conversation to give the most complete and accurate response possible. 
