@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Annotated, Any, Dict, List
+from typing import Annotated, Any, Dict, List, Optional
 
 from semantic_kernel.connectors.mcp import MCPStdioPlugin
 from semantic_kernel.contents.text_content import TextContent
@@ -9,6 +9,40 @@ from semantic_kernel.functions import KernelArguments, kernel_function
 
 # Import a function to retrieve embeddings from the shared cache
 from utils.embedding_cache_store import retrieve_embedding
+
+# Constants
+DEFAULT_TOP_K = 5
+DEFAULT_NUM_CANDIDATES = 50
+DEFAULT_BOOST_TITLE = 3.0
+DEFAULT_BOOST_SUMMARY = 1.5
+DEFAULT_BOOST_CONTENT = 1.0
+DEFAULT_BOOST_CONCEPTS = 2.0
+
+# Field names for search
+SEARCH_FIELDS = [
+    f"title^{DEFAULT_BOOST_TITLE}",
+    f"summary^{DEFAULT_BOOST_SUMMARY}",
+    f"content^{DEFAULT_BOOST_CONTENT}",
+    f"key_concepts_llm^{DEFAULT_BOOST_CONCEPTS}",
+]
+
+# Default source fields to fetch
+DEFAULT_SOURCE_FIELDS = [
+    "id",
+    "title",
+    "summary",
+    "source_metadata",
+    "uri",
+    "publication_date",
+    "document_type",
+]
+
+# Logging constants
+LOG_PREFIX_INFO = "Elastic MCP:"
+LOG_PREFIX_DEBUG = "🔍 DEBUG:"
+
+# Mock response configuration
+MOCK_RESPONSE_COUNT = 3
 
 
 class ElasticMCPClient:
@@ -35,42 +69,38 @@ class ElasticMCPClient:
     without ever having to call a separate "discover tools" endpoint.
     """
 
-    _DEFAULT_TOP_K = 5
-    # Only fetch lightweight, high-level fields unless caller explicitly asks otherwise.
-    _DEFAULT_SOURCE_FIELDS = [
-        "id",
-        "title",
-        "summary",
-        "source_metadata",
-        "uri",
-        "publication_date",
-        "document_type",
-    ]
-    _indices_cache: List[str] = []
-    _mappings_cache: Dict[str, Any] = {}
-
     def __init__(self) -> None:
+        """Initialize Elasticsearch MCP client with environment configuration."""
         self.base_url: str = os.getenv("MCP_URL", "http://localhost:6277").rstrip("/")
         self._log = logging.getLogger("mcp.elastic_client")
 
-    # ─────────────────────────────────────────── internal helper ──
-    async def _call_tool(self, name: str, **kwargs):
-        """Launch `@elastic/mcp-server-elasticsearch` via npx and invoke *name*.
+        # Cache for performance optimization
+        self._indices_cache: List[str] = []
+        self._mappings_cache: Dict[str, Any] = {}
 
-        The Node process is started on-demand via MCPStdioPlugin (SSE over stdio)
-        so the Python app stays dependency-free.
+        self._log.info(f"{LOG_PREFIX_INFO} Initialized with base_url: {self.base_url}")
+
+    async def _call_tool(self, name: str, **kwargs) -> Any:
+        """
+        Launch Elasticsearch MCP server and invoke specified tool.
+
+        Args:
+            name: Tool name to invoke
+            **kwargs: Tool arguments
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            RuntimeError: If tool execution fails
         """
         es_url = os.getenv("ES_URL")
         es_api_key = os.getenv("ES_API_KEY", "")
-        self._log.info(
-            "Starting MCPStdioPlugin with ES_URL=%s, tool=%s, args=%s",
-            es_url,
-            name,
-            kwargs,
-        )
+
+        self._log.info(f"{LOG_PREFIX_INFO} Invoking tool {name} with ES_URL={es_url}")
 
         cmd = f'ES_URL="{es_url}" ES_API_KEY="{es_api_key}" npx -y @elastic/mcp-server-elasticsearch'
-        self._log.info("Command to run Node MCP plugin: %s", cmd)
+        self._log.debug(f"{LOG_PREFIX_INFO} Command: {cmd}")
 
         try:
             async with MCPStdioPlugin(
@@ -80,183 +110,122 @@ class ElasticMCPClient:
                 load_tools=True,
                 load_prompts=False,
             ) as mcp_plugin:
-                self._log.info(
-                    "MCPStdioPlugin started successfully, methods available: %s",
-                    dir(mcp_plugin),
-                )
                 tool = getattr(mcp_plugin, name, None)
                 if not tool:
                     raise RuntimeError(f"Tool {name} not found in MCP plugin")
-                self._log.info("Calling MCP tool %s with args: %s", name, kwargs)
+
+                self._log.info(f"{LOG_PREFIX_INFO} Calling tool {name}")
                 result = await tool(**kwargs)
-                self._log.info("MCP tool %s completed successfully", name)
+                self._log.info(f"{LOG_PREFIX_INFO} Tool {name} completed successfully")
                 return result
+
         except Exception as e:
-            self._log.error("Error calling MCP tool %s: %s", name, e, exc_info=True)
-            # Custom error handling could be added here
-            # For now, we'll re-raise the exception to let Semantic Kernel handle it
+            self._log.error(f"{LOG_PREFIX_INFO} Tool {name} failed: {e}", exc_info=True)
             raise
 
-    # ─────────────────────────────────────────── public SK tools ──
-
-    @kernel_function(
-        name="search",
-        description="Search an Elastic index and return up to `top_k` hits. By default only lightweight fields (id, title, summary…) are fetched. Can perform hybrid search if a pre-computed query_vector is found in cache for the given request_id.",
-    )
-    async def search(
+    def _build_hybrid_search_query(
         self,
-        index: Annotated[
-            str, "Name of the index to search – must be in list_indices()"
-        ],
-        query: Annotated[
-            str | None,
-            "Optional plain-text query; used for keyword part of hybrid search or if query_body is not provided",
-        ] = None,
-        request_id: Annotated[
-            str
-            | None,  # Changed to Optional, agent might not always have it initially.
-            "The request ID used to retrieve a pre-computed query vector from cache for KNN search. If not provided or vector not found, falls back to keyword-only search.",
-        ] = None,  # Make it optional, so agent can call without if needed (fallback)
-        query_body: Annotated[
-            Dict[str, Any] | None,
-            "Full Elasticsearch DSL body to execute. If provided, it's assumed this body already includes the KNN clause or is structured for hybrid search, or that hybrid search is not intended with this body.",
-        ] = None,
-        queryBody: Annotated[
-            Dict[str, Any] | None,
-            "Alias for query_body – camelCase version used in MCP contract",
-        ] = None,
-        embedding_field: Annotated[
-            str | None,
-            "Name of the field in Elasticsearch that contains the document embeddings. Defaults to 'embedding_summary'.",
-        ] = "embedding_summary",
-        top_k: Annotated[
-            int | None, "Maximum number of hits to return (defaults to 5)"
-        ] = None,
-        num_candidates: Annotated[
-            int | None, "Number of candidates for KNN search. Defaults to 50."
-        ] = 50,
-        arguments: KernelArguments | None = None,
-    ) -> List[Dict[str, Any]]:
-        if query_body is None and queryBody is not None:
-            query_body = queryBody
+        query: Optional[str],
+        query_vector: List[float],
+        embedding_field: str,
+        top_k: int,
+        num_candidates: int,
+    ) -> Dict[str, Any]:
+        """
+        Build hybrid search query combining KNN and keyword search.
 
-        top_k = top_k or self._DEFAULT_TOP_K
-        final_query_body: Dict[str, Any]
-        query_vector: List[float] | None = None
+        Args:
+            query: Text query for keyword search
+            query_vector: Vector for semantic search
+            embedding_field: Field containing document embeddings
+            top_k: Number of results to return
+            num_candidates: KNN candidate count
 
-        if request_id:
-            self._log.info(
-                f"Attempting to retrieve pre-computed vector using request_id: {request_id}"
-            )
-            query_vector = retrieve_embedding(request_id)  # Retrieve from shared cache
-            if query_vector:
-                self._log.info(
-                    f"Successfully retrieved query_vector for request_id: {request_id}"
-                )
-            else:
-                self._log.warning(
-                    f"No query_vector found in cache for request_id: {request_id}. Proceeding without vector search."
-                )
-        else:
-            self._log.warning(
-                "No request_id provided to search function. Cannot retrieve pre-computed vector."
-            )
+        Returns:
+            Elasticsearch query body
+        """
+        knn_clause = {
+            "field": embedding_field,
+            "query_vector": query_vector,
+            "k": top_k,
+            "num_candidates": num_candidates,
+        }
 
-        if query_body is not None:
-            final_query_body = query_body
-            final_query_body.setdefault("size", top_k)
-            if query_vector and "knn" not in final_query_body:
-                self._log.warning(
-                    "query_body provided without a 'knn' clause, but a query_vector was retrieved from cache. "
-                    "The provided query_body will be used as is. If hybrid search with this query_body was intended, "
-                    "the query_body itself must include the knn clause."
-                )
-        elif query_vector is not None:  # query_body is None, but we have a vector
-            if not embedding_field:
-                self._log.error(
-                    "embedding_field name is required for KNN search when query_vector is available."
-                )
-                return []
-
-            knn_clause = {
-                "field": embedding_field,
-                "query_vector": query_vector,
-                "k": top_k,
-                "num_candidates": num_candidates or 50,
+        keyword_query = {
+            "multi_match": {
+                "query": query or "",
+                "fields": SEARCH_FIELDS,
+                "operator": "or",
             }
+        }
 
-            # Enhanced keyword part for hybrid search
-            keyword_query_part = {
+        return {
+            "knn": knn_clause,
+            "query": keyword_query,
+            "size": top_k,
+        }
+
+    def _build_keyword_only_query(
+        self, query: Optional[str], top_k: int
+    ) -> Dict[str, Any]:
+        """
+        Build keyword-only search query.
+
+        Args:
+            query: Text query
+            top_k: Number of results to return
+
+        Returns:
+            Elasticsearch query body
+        """
+        return {
+            "query": {
                 "multi_match": {
                     "query": query or "",
-                    "fields": [
-                        "title^3",
-                        "summary^1.5",
-                        "content^1",
-                        "key_concepts_llm^2",
-                    ],
-                    "operator": "or",  # More recall
+                    "fields": SEARCH_FIELDS,
+                    "operator": "or",
                 }
+            },
+            "size": top_k,
+        }
+
+    def _create_mock_response(self, index: str, top_k: int) -> List[Dict[str, Any]]:
+        """
+        Create mock search response for fallback scenarios.
+
+        Args:
+            index: Index name for mock results
+            top_k: Number of mock results
+
+        Returns:
+            Mock search results
+        """
+        return [
+            {
+                "id": f"mock_{i}",
+                "index": index,
+                "score": 1.0 / (i + 1),
+                "title": f"Mock title {i + 1}",
             }
+            for i in range(min(top_k, MOCK_RESPONSE_COUNT))
+        ]
 
-            final_query_body = {
-                "knn": knn_clause,
-                # The 'query' part is combined with 'knn' by Elasticsearch for hybrid search scoring
-                "query": keyword_query_part,
-                "size": top_k,
-            }
-            self._log.info(
-                f"Constructed hybrid query with KNN (vector from cache) and multi_match (keyword). Embedding field: {embedding_field}, Query: {query}"
-            )
-        else:  # No query_body and no query_vector (either no request_id or not found in cache)
-            # Enhanced keyword-only search
-            final_query_body = {
-                "query": {
-                    "multi_match": {
-                        "query": query or "",
-                        "fields": [
-                            "title^3",
-                            "summary^1.5",
-                            "content^1",
-                            "key_concepts_llm^2",
-                        ],
-                        "operator": "or",  # More recall
-                    }
-                },
-                "size": top_k,
-            }
-            self._log.info(
-                f"Constructed keyword-only (multi_match) query because no query_vector was available/retrieved. Query: {query}"
-            )
+    def _normalize_search_results(
+        self, result: Any, index: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Normalize search results to consistent format.
 
-        if "_source" not in final_query_body:
-            final_query_body["_source"] = self._DEFAULT_SOURCE_FIELDS
+        Args:
+            result: Raw search results from MCP
+            index: Index name for context
 
-        final_query_body.setdefault("size", top_k)
+        Returns:
+            Normalized results with required fields
+        """
+        hits = []
 
-        try:
-            mcp_payload = {"index": index, "queryBody": final_query_body}
-            result = await self._call_tool("search", **mcp_payload)
-            self._log.info(
-                "SEARCH REQUEST to MCP for index %s: %s",
-                index,
-                json.dumps(mcp_payload, indent=2),
-            )
-            self._log.info("SEARCH RESULT from MCP for index %s: %r", index, result)
-        except Exception as e:
-            self._log.error("SEARCH FAILED for index %s: %s", index, e, exc_info=True)
-            return [
-                {
-                    "id": f"mock_{i}",
-                    "index": index,
-                    "score": 1.0 / (i + 1),
-                    "title": f"Mock title {i + 1}",
-                }
-                for i in range(min(top_k, 3))
-            ]
-
-        hits: List[Dict[str, Any]] = []
-        for idx_line, item in enumerate(result):
+        for idx, item in enumerate(result):
             if isinstance(item, dict):
                 data = dict(item)
             else:
@@ -264,79 +233,251 @@ class ElasticMCPClient:
                     data = json.loads(str(item))
                 except Exception:
                     data = {"id": str(item), "text": str(item)}
+
+            # Ensure required fields
             data.setdefault("index", index)
-            data.setdefault("score", 1.0 / (idx_line + 1))
+            data.setdefault("score", 1.0 / (idx + 1))
             hits.append(data)
+
         return hits
 
-    # ────────────────────────────────────────────────────────────────
+    def _log_search_operation(
+        self,
+        index: str,
+        query: Optional[str],
+        has_vector: bool,
+        result_count: int,
+    ) -> None:
+        """
+        Log search operation details.
+
+        Args:
+            index: Search index
+            query: Query text
+            has_vector: Whether vector search was used
+            result_count: Number of results returned
+        """
+        search_type = "hybrid" if has_vector else "keyword-only"
+        self._log.info(
+            f"{LOG_PREFIX_INFO} {search_type} search on '{index}' "
+            f"with query '{query}' returned {result_count} results"
+        )
+
+    @kernel_function(
+        name="search",
+        description="Advanced search with hybrid semantic and keyword capabilities for parliamentary documents",
+    )
+    async def search(
+        self,
+        index: Annotated[str, "Target index name from list_indices()"],
+        query: Annotated[str, "Text query for keyword search"] = "",
+        request_id: Annotated[str, "Request ID for cached vector retrieval"] = "",
+        query_body: Annotated[str, "Custom Elasticsearch DSL as JSON string"] = "",
+        queryBody: Annotated[str, "Alias for query_body"] = "",
+        embedding_field: Annotated[
+            str, "Document embedding field"
+        ] = "embedding_summary",
+        top_k: Annotated[int, "Maximum results"] = DEFAULT_TOP_K,
+        num_candidates: Annotated[int, "KNN candidates"] = DEFAULT_NUM_CANDIDATES,
+        arguments: Optional[KernelArguments] = None,
+    ) -> List[Dict[str, Any]]:
+        """Execute advanced search with hybrid semantic and keyword capabilities."""
+        # Resolve parameters
+        query = query.strip() if query else None
+        request_id = request_id.strip() if request_id else None
+
+        # Parse query body if provided
+        parsed_query_body = None
+        if query_body and query_body.strip():
+            try:
+                parsed_query_body = json.loads(query_body)
+            except json.JSONDecodeError:
+                self._log.warning(
+                    f"{LOG_PREFIX_INFO} Invalid query_body JSON: {query_body}"
+                )
+        elif queryBody and queryBody.strip():
+            try:
+                parsed_query_body = json.loads(queryBody)
+            except json.JSONDecodeError:
+                self._log.warning(
+                    f"{LOG_PREFIX_INFO} Invalid queryBody JSON: {queryBody}"
+                )
+
+        top_k = max(1, top_k) if top_k else DEFAULT_TOP_K
+        num_candidates = (
+            max(1, num_candidates) if num_candidates else DEFAULT_NUM_CANDIDATES
+        )
+        final_query_body: Dict[str, Any]
+        query_vector: Optional[List[float]] = None
+
+        # Attempt vector retrieval if request_id provided
+        if request_id:
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Retrieving vector for request_id: {request_id}"
+            )
+            query_vector = retrieve_embedding(request_id)
+
+            if query_vector:
+                self._log.info(f"{LOG_PREFIX_INFO} Vector retrieved successfully")
+            else:
+                self._log.warning(
+                    f"{LOG_PREFIX_INFO} No vector found for request_id: {request_id}"
+                )
+
+        # Build appropriate query
+        if parsed_query_body is not None:
+            # Use provided query body
+            final_query_body = parsed_query_body
+            final_query_body.setdefault("size", top_k)
+
+            if query_vector and "knn" not in final_query_body:
+                self._log.warning(
+                    f"{LOG_PREFIX_INFO} Custom query_body without KNN clause but vector available"
+                )
+
+        elif query_vector is not None:
+            # Build hybrid search query
+            if not embedding_field:
+                self._log.error(
+                    f"{LOG_PREFIX_INFO} embedding_field required for vector search"
+                )
+                return []
+
+            final_query_body = self._build_hybrid_search_query(
+                query,
+                query_vector,
+                embedding_field,
+                top_k,
+                num_candidates,
+            )
+            self._log.info(f"{LOG_PREFIX_INFO} Built hybrid search query")
+
+        else:
+            # Build keyword-only query
+            final_query_body = self._build_keyword_only_query(query, top_k)
+            self._log.info(f"{LOG_PREFIX_INFO} Built keyword-only query")
+
+        # Set default source fields if not specified
+        if "_source" not in final_query_body:
+            final_query_body["_source"] = DEFAULT_SOURCE_FIELDS
+
+        final_query_body.setdefault("size", top_k)
+
+        # Execute search
+        try:
+            mcp_payload = {"index": index, "queryBody": final_query_body}
+
+            self._log.debug(
+                f"{LOG_PREFIX_INFO} Search payload: {json.dumps(mcp_payload, indent=2)}"
+            )
+
+            result = await self._call_tool("search", **mcp_payload)
+            hits = self._normalize_search_results(result, index)
+
+            self._log_search_operation(
+                index, query, query_vector is not None, len(hits)
+            )
+            return hits
+
+        except Exception as e:
+            self._log.error(
+                f"{LOG_PREFIX_INFO} Search failed for index {index}: {e}", exc_info=True
+            )
+            return self._create_mock_response(index, top_k)
+
     @kernel_function(
         name="list_indices",
-        description="Return a JSON array with all available MCP index names. Use reload=true to refresh the local cache.",
+        description="Discover available Elasticsearch indices with optional cache refresh",
     )
     async def list_indices(
         self,
-        reload: Annotated[bool, "Set to true to bypass the client-side cache"] = False,
-        arguments: KernelArguments | None = None,
+        reload: Annotated[bool, "Force refresh from server"] = False,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[str]:
+        """List all available search indices."""
         if self._indices_cache and not reload:
             return self._indices_cache
 
         try:
             result = await self._call_tool("list_indices")
-            self._log.info("Raw list_indices result: %r", result)
+            self._log.debug(f"{LOG_PREFIX_INFO} Raw indices result: {result}")
+
             indices = []
             if result and isinstance(result, list):
                 for item in result:
                     if isinstance(item, TextContent) and item.text.strip().startswith(
                         "["
                     ):
-                        raw_json = json.loads(item.text)
-                        if all(isinstance(el, str) for el in raw_json):
-                            indices = raw_json
-                        else:
-                            indices = [el.get("index", str(el)) for el in raw_json]
-                        break
+                        try:
+                            raw_json = json.loads(item.text)
+                            if all(isinstance(el, str) for el in raw_json):
+                                indices = raw_json
+                            else:
+                                indices = [el.get("index", str(el)) for el in raw_json]
+                            break
+                        except json.JSONDecodeError:
+                            continue
+
             self._indices_cache = indices
+            self._log.info(f"{LOG_PREFIX_INFO} Retrieved {len(indices)} indices")
+
         except Exception as e:
-            self._log.warning("list_indices failed: %s", e)
+            self._log.warning(f"{LOG_PREFIX_INFO} List indices failed: {e}")
+
         return self._indices_cache
 
-    # ────────────────────────────────────────────────────────────────
     @kernel_function(
         name="get_mappings",
-        description="Return the full Elasticsearch mapping (properties schema) for the specified index. Result equals GET /<index>/_mapping.",
+        description="Retrieve Elasticsearch mapping schema for detailed index structure analysis",
     )
     async def get_mappings(
         self,
-        index: Annotated[str, "Name of the index (see list_indices)"],
-        reload: Annotated[bool, "Force fetch from server instead of cache"] = False,
-        arguments: KernelArguments | None = None,
+        index: Annotated[str, "Index name from list_indices()"],
+        reload: Annotated[bool, "Force refresh from server"] = False,
+        arguments: Optional[KernelArguments] = None,
     ) -> Dict[str, Any]:
+        """Get comprehensive mapping information for specified index."""
         if index in self._mappings_cache and not reload:
             return self._mappings_cache[index]
 
         try:
             result = await self._call_tool("get_mappings", index=index)
+
+            # Extract mapping content
             items = (
                 result["content"]
                 if isinstance(result, dict) and "content" in result
                 else result
             )
+
             mapping_json: Dict[str, Any] = {}
-            for item in items:
-                txt = getattr(item, "text", None) or item
-                if not isinstance(txt, str):
-                    continue
-                txt = txt.strip()
-                if "{" in txt and "properties" in txt:
-                    json_part = txt[txt.find("{") :]
-                    try:
-                        mapping_json = json.loads(json_part)
-                        break
-                    except Exception:
+
+            if isinstance(items, (list, tuple)):
+                for item in items:
+                    text = getattr(item, "text", None) or str(item)
+                    if not isinstance(text, str):
                         continue
+
+                    text = text.strip()
+                    if "{" in text and "properties" in text:
+                        json_start = text.find("{")
+                        json_part = text[json_start:]
+                        try:
+                            mapping_json = json.loads(json_part)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+
             self._mappings_cache[index] = mapping_json
+            self._log.info(f"{LOG_PREFIX_INFO} Mapping retrieved for index: {index}")
+
         except Exception as e:
-            self._log.warning("get_mappings failed for %s: %s", index, e)
+            self._log.warning(f"{LOG_PREFIX_INFO} Get mappings failed for {index}: {e}")
+
         return self._mappings_cache.get(index, {})
+
+    def clear_cache(self) -> None:
+        """Clear all cached data for fresh retrieval."""
+        self._indices_cache.clear()
+        self._mappings_cache.clear()
+        self._log.info(f"{LOG_PREFIX_INFO} Cache cleared")

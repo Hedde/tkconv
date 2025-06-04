@@ -1,36 +1,56 @@
-import os
+"""Agent factory for parliamentary data analysis."""
+
+import logging
+from typing import Awaitable, Callable, List, Optional
 
 from semantic_kernel.agents import Agent
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
 
-from agents.algemene_informatie_agent import create_algemene_informatie_agent
-from agents.vergunningen_agent import create_vergunningen_agent
 from agents.parliamentary_data_agent import create_parliamentary_data_agent
-
-# from agents.coder_agent import create_coder_agent
-# from agents.research_agent import create_research_agent
 from orchestration.callbacks import tool_call_debug_handler
 
+logger = logging.getLogger(__name__)
 
-async def agents() -> list[Agent]:
-    """Return a list of domain-specialized agents that will participate in the Magentic orchestration."""
-    # research_agent = await create_research_agent()
-    # coder_agent = await create_coder_agent()
 
-    # Create the domain-based agents with the tool call debug handler
-    # vergunningen_agent = await create_vergunningen_agent(
-    #     on_intermediate_message=tool_call_debug_handler
-    # )
+async def create_agent_list(
+    on_intermediate_message: Optional[
+        Callable[[ChatMessageContent], Awaitable[None]]
+    ] = None,
+) -> List[Agent]:
+    """
+    Create the list of agents for parliamentary data analysis.
 
-    # algemene_informatie_agent = await create_algemene_informatie_agent(
-    #     on_intermediate_message=tool_call_debug_handler
-    # )
+    Args:
+        on_intermediate_message: Optional callback for intermediate agent messages
 
-    parliamentary_data_agent = await create_parliamentary_data_agent(
-        on_intermediate_message=tool_call_debug_handler
-    )
+    Returns:
+        List of configured agents ready for orchestration
 
-    return [
-        parliamentary_data_agent,
-        # vergunningen_agent,
-        # algemene_informatie_agent,
-    ]  # , research_agent]
+    Raises:
+        RuntimeError: If agent creation fails
+    """
+    try:
+        logger.info("Creating parliamentary data agent")
+
+        parliamentary_data_agent = await create_parliamentary_data_agent(
+            on_intermediate_message=on_intermediate_message or tool_call_debug_handler
+        )
+
+        agents_list = [parliamentary_data_agent]
+        logger.info(f"Successfully created {len(agents_list)} agent(s)")
+
+        return agents_list
+
+    except Exception as e:
+        logger.error(f"Failed to create agents: {e}", exc_info=True)
+        raise RuntimeError(f"Agent creation failed: {e}") from e
+
+
+async def agents() -> List[Agent]:
+    """
+    Factory function for creating the default agent configuration.
+
+    Returns:
+        List of agents with default configuration
+    """
+    return await create_agent_list()

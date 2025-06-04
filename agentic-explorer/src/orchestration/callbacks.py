@@ -1,203 +1,350 @@
+"""Callback handlers for agent orchestration and streaming."""
+
 import asyncio
 import json
 import logging
 import re
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from semantic_kernel.contents import ChatMessageContent, TextContent
 from semantic_kernel.contents.function_call_content import FunctionCallContent
 from semantic_kernel.contents.function_result_content import FunctionResultContent
 
-logger = logging.getLogger("mcp_debug")
+from orchestration.constants import (
+    CITATION_END_MARKER,
+    CITATION_SOURCE_PREFIX,
+    CITATION_START_MARKER,
+    COMPLETION_SIGNALS,
+    INVALID_DATE_VALUES,
+    LOOP_INDICATORS,
+    TOOL_DESCRIPTIONS,
+    StreamEvents,
+)
 
-# Print-based callback for CLI/debug
+logger = logging.getLogger(__name__)
 
 
 def agent_response_callback(message: ChatMessageContent) -> None:
-    """Observer function to print the messages from the agents."""
+    """Print agent responses for CLI/debug usage."""
     print(f"**{message.name}**\n{message.content}")
 
 
-# Streaming callback for FastAPI SSE endpoints
+def _get_tool_description(tool_name: str) -> str:
+    """Get user-friendly description for a tool call."""
+    return TOOL_DESCRIPTIONS.get(tool_name, f"gebruikt tool {tool_name}")
 
 
-def make_streaming_callback(queue: asyncio.Queue):
-    """Returns a callback that processes agent messages.
-    It puts 'thought' events into the queue.
-    If citations are found in ArchivistAgent messages, it strips them from the text
-    and puts a separate 'citations_found' event onto the queue.
-    Enhanced to provide more detailed agent interaction information.
+def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
+    """
+    Parse a citation line into structured data.
+
+    Args:
+        line: Citation line starting with SOURCE:
+
+    Returns:
+        Parsed citation data or None if parsing fails
+    """
+    try:
+        parts = line[len(CITATION_SOURCE_PREFIX) :].strip()
+        cite_data = {}
+
+        for match in re.finditer(r'(\w+)="(.*?)"\s*,?', parts):
+            key, value = match.groups()
+
+            # Handle invalid date values
+            if key == "publication_date" and value in INVALID_DATE_VALUES:
+                value = None
+
+            cite_data[key] = value
+
+        # Only accept citations with valid identifiers
+        if cite_data.get("id") or cite_data.get("document_id"):
+            return cite_data
+
+    except Exception as e:
+        logger.error(f"Error parsing citation line '{line}': {e}")
+
+    return None
+
+
+def _extract_citations(
+    text_content: str, agent_name: str
+) -> tuple[str, List[Dict[str, str]]]:
+    """
+    Extract citations from agent response text.
+
+    Args:
+        text_content: The agent's response text
+        agent_name: Name of the agent for logging
+
+    Returns:
+        Tuple of (processed_text, parsed_citations)
+    """
+    logger.info(f"Processing message from {agent_name} for citations")
+
+    citation_block_match = re.search(
+        f"{CITATION_START_MARKER}(.*?){CITATION_END_MARKER}", text_content, re.DOTALL
+    )
+
+    if not citation_block_match:
+        logger.debug(f"No citation block found in {agent_name} response")
+        return text_content, []
+
+    # Remove citation block from text
+    processed_text = (
+        text_content[: citation_block_match.start()].rstrip()
+        + text_content[citation_block_match.end() :].lstrip()
+    )
+
+    # Parse citations
+    citation_lines = citation_block_match.group(1).strip().split("\n")
+    parsed_citations = []
+
+    for line in citation_lines:
+        if line.startswith(CITATION_SOURCE_PREFIX):
+            citation = _parse_citation_line(line)
+            if citation:
+                parsed_citations.append(citation)
+
+    logger.info(f"Extracted {len(parsed_citations)} citations from {agent_name}")
+    return processed_text, parsed_citations
+
+
+async def _emit_event(queue: asyncio.Queue, event_data: Dict) -> None:
+    """Emit an event to the streaming queue."""
+    try:
+        await queue.put(json.dumps(event_data))
+    except Exception as e:
+        logger.error(f"Failed to emit event: {e}")
+
+
+def make_streaming_callback(
+    queue: asyncio.Queue,
+) -> Callable[[ChatMessageContent], None]:
+    """
+    Create a streaming callback for agent messages.
+
+    Args:
+        queue: Queue for streaming events
+
+    Returns:
+        Callback function for processing agent messages
     """
 
-    def streaming_callback(message: ChatMessageContent):
-        text_content = ""
-        if message.items and isinstance(message.items[0], TextContent):
-            text_content = message.items[0].text
-        elif isinstance(message.content, str):
-            text_content = message.content
+    def streaming_callback(message: ChatMessageContent) -> None:
+        """Process agent messages and emit streaming events."""
+        try:
+            # Extract text content
+            text_content = ""
+            if message.items and isinstance(message.items[0], TextContent):
+                text_content = message.items[0].text
+            elif isinstance(message.content, str):
+                text_content = message.content
 
-        # Enhanced agent interaction tracking
-        agent_name = message.name or "Unknown"
+            agent_name = message.name or "Unknown"
 
-        # Check if this is the start of an agent response
-        if text_content and len(text_content.strip()) > 0:
-            # Send agent start event
-            agent_start_payload = {
-                "event": "agent_start",
-                "agent": agent_name,
-                "message": f"{agent_name} begint met antwoorden...",
-            }
-            asyncio.create_task(queue.put(json.dumps(agent_start_payload)))
-
-        # Check for function/tool calls in the message
-        has_tool_calls = False
-        for item in message.items or []:
-            if isinstance(item, FunctionCallContent):
-                has_tool_calls = True
-                # Create a more descriptive tool call message
-                tool_description = ""
-                if item.name == "search":
-                    tool_description = "zoekt in documentendatabase"
-                elif item.name == "list_indices":
-                    tool_description = "haalt beschikbare databases op"
-                elif item.name == "get_mappings":
-                    tool_description = "analyseert database structuur"
-                else:
-                    tool_description = f"gebruikt tool {item.name}"
-
-                tool_payload = {
-                    "event": "agent_tool_call",
-                    "agent": agent_name,
-                    "tool": item.name,
-                    "message": f"🔍 {agent_name} {tool_description}...",
-                }
-                asyncio.create_task(queue.put(json.dumps(tool_payload)))
-            elif isinstance(item, FunctionResultContent):
-                tool_result_payload = {
-                    "event": "agent_tool_result",
-                    "agent": agent_name,
-                    "tool": item.name,
-                    "message": f"✓ {agent_name} heeft zoekresultaten ontvangen",
-                }
-                asyncio.create_task(queue.put(json.dumps(tool_result_payload)))
-
-        processed_text = text_content
-        parsed_citations = []
-
-        if message.name and (
-            "ArchivistAgent" in message.name
-            or "ResearchAgent" in message.name
-            or "Agent" in message.name
-        ):
-            logger.info(
-                f"CALLBACKS: Received message from {message.name}. Raw text_content trying to parse for citations: <<<\n{text_content}\n>>>"
-            )
-            citation_block_match = re.search(
-                r"USED_SOURCES_START(.*?)USED_SOURCES_END", text_content, re.DOTALL
-            )
-            logger.info(
-                f"CALLBACKS: citation_block_match result: {citation_block_match}"
-            )
-            if citation_block_match:
-                # Remove the citation block from the text that will be part of the "thought" event
-                processed_text = (
-                    text_content[: citation_block_match.start()].rstrip()
-                    + text_content[citation_block_match.end() :].lstrip()
+            # Emit agent start event
+            if text_content and text_content.strip():
+                asyncio.create_task(
+                    _emit_event(
+                        queue,
+                        {
+                            "event": StreamEvents.AGENT_START,
+                            "agent": agent_name,
+                            "message": f"{agent_name} begint met antwoorden...",
+                        },
+                    )
                 )
 
-                citation_lines = citation_block_match.group(1).strip().split("\n")
-                for line in citation_lines:
-                    if line.startswith("SOURCE:"):
-                        try:
-                            parts = line[len("SOURCE:") :].strip()
-                            cite_data = {}
-                            for match in re.finditer(r'(\w+)="(.*?)"\s*,?', parts):
-                                key, value = match.groups()
-                                # Handle publication_date - avoid "N/A" or "Invalid Date"
-                                if key == "publication_date" and value in [
-                                    "N/A",
-                                    "Invalid Date",
-                                    "",
-                                    "null",
-                                    "None",
-                                ]:
-                                    value = None
-                                cite_data[key] = value
-                            # Accept citations with either 'id' or 'document_id' field
-                            if cite_data.get("id") or cite_data.get("document_id"):
-                                parsed_citations.append(cite_data)
-                        except Exception as e:
-                            logger.error(f"Error parsing citation line '{line}': {e}")
-            logger.info(f"CALLBACKS: parsed_citations: {parsed_citations}")
+            # Process tool calls
+            has_tool_calls = False
+            if message.items:
+                for item in message.items:
+                    if isinstance(item, FunctionCallContent):
+                        has_tool_calls = True
+                        tool_description = _get_tool_description(item.name)
 
-            # If citations were parsed, put a special event on the queue for them
-            if parsed_citations:
-                citation_payload = {
-                    "event": "citations_found",  # Custom event type
-                    "agent": message.name,  # Keep agent name for context if needed
-                    "citations": parsed_citations,
-                }
-                logger.info(f"CITATIONS PAYLOAD: {json.dumps(citation_payload)}")
-                # Log citation properties to better understand their structure
-                if parsed_citations:
-                    logger.info(
-                        f"CITATION PROPERTIES: {list(parsed_citations[0].keys())}"
+                        asyncio.create_task(
+                            _emit_event(
+                                queue,
+                                {
+                                    "event": StreamEvents.AGENT_TOOL_CALL,
+                                    "agent": agent_name,
+                                    "tool": item.name,
+                                    "message": f"🔍 {agent_name} {tool_description}...",
+                                },
+                            )
+                        )
+
+                    elif isinstance(item, FunctionResultContent):
+                        asyncio.create_task(
+                            _emit_event(
+                                queue,
+                                {
+                                    "event": StreamEvents.AGENT_TOOL_RESULT,
+                                    "agent": agent_name,
+                                    "tool": item.name,
+                                    "message": f"✓ {agent_name} heeft zoekresultaten ontvangen",
+                                },
+                            )
+                        )
+
+            # Process citations for relevant agents
+            processed_text = text_content
+            if message.name and (
+                "Agent" in message.name or "ResearchAgent" in message.name
+            ):
+                processed_text, citations = _extract_citations(text_content, agent_name)
+
+                if citations:
+                    asyncio.create_task(
+                        _emit_event(
+                            queue,
+                            {
+                                "event": StreamEvents.CITATIONS_FOUND,
+                                "agent": agent_name,
+                                "citations": citations,
+                            },
+                        )
                     )
-                asyncio.create_task(queue.put(json.dumps(citation_payload)))
 
-        # Send agent completion event if this appears to be a final response
-        if processed_text.strip() and not has_tool_calls:
-            agent_complete_payload = {
-                "event": "agent_complete",
-                "agent": agent_name,
-                "message": f"{agent_name} heeft antwoord voltooid",
-            }
-            asyncio.create_task(queue.put(json.dumps(agent_complete_payload)))
+            # Emit completion event
+            if processed_text.strip() and not has_tool_calls:
+                # Check for completion signals
+                completion_signal = _check_completion_signal(processed_text)
+                if completion_signal:
+                    asyncio.create_task(
+                        _emit_event(
+                            queue,
+                            {
+                                "event": StreamEvents.AGENT_COMPLETE,
+                                "agent": agent_name,
+                                "completion_signal": completion_signal,
+                                "message": f"{agent_name} heeft taak voltooid: {completion_signal}",
+                            },
+                        )
+                    )
+                else:
+                    asyncio.create_task(
+                        _emit_event(
+                            queue,
+                            {
+                                "event": StreamEvents.AGENT_COMPLETE,
+                                "agent": agent_name,
+                                "message": f"{agent_name} heeft antwoord voltooid",
+                            },
+                        )
+                    )
 
-        # Always send the (potentially modified) thought/text content
-        if processed_text.strip():  # Only send if there's actual content
-            thought_payload = {
-                "event": "thought",
-                "agent": message.name,
-                "text": processed_text.strip(),
-            }
-            logger.info(f"THOUGHT PAYLOAD: {json.dumps(thought_payload)}")
-            asyncio.create_task(queue.put(json.dumps(thought_payload)))
+                # Check for loop indicators
+                loop_indicators = _check_loop_indicators(processed_text)
+                if loop_indicators:
+                    asyncio.create_task(
+                        _emit_event(
+                            queue,
+                            {
+                                "event": StreamEvents.LOOP_DETECTED,
+                                "agent": agent_name,
+                                "indicators": loop_indicators,
+                                "message": f"⚠️ Mogelijke loop gedetecteerd bij {agent_name}",
+                            },
+                        )
+                    )
+
+            # Emit thought event
+            if processed_text.strip():
+                asyncio.create_task(
+                    _emit_event(
+                        queue,
+                        {
+                            "event": StreamEvents.THOUGHT,
+                            "agent": agent_name,
+                            "text": processed_text.strip(),
+                        },
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Error in streaming callback: {e}", exc_info=True)
 
     return streaming_callback
 
 
 async def tool_call_debug_handler(message: ChatMessageContent) -> None:
-    """Detailed handler for intermediate messages to debug function/tool calls.
+    """
+    Debug handler for detailed tool call logging.
 
-    This callback is passed to agent.invoke's on_intermediate_message parameter
-    to capture and log all function calls and results during agent execution.
+    This handler logs all function calls and results during agent execution
+    for debugging and monitoring purposes.
     """
     agent_name = message.name or "Unknown"
 
-    # Check if this message has any function calls or results
-    for item in message.items or []:
-        if isinstance(item, FunctionCallContent):
-            logger.info(
-                f"TOOL CALL [{agent_name}]: {item.name} with args: {item.arguments}"
-            )
-            print(f"TOOL CALL [{agent_name}]: {item.name} with args: {item.arguments}")
+    try:
+        if message.items:
+            for item in message.items:
+                if isinstance(item, FunctionCallContent):
+                    logger.info(
+                        f"TOOL CALL [{agent_name}]: {item.name} with args: {item.arguments}"
+                    )
+                    print(
+                        f"TOOL CALL [{agent_name}]: {item.name} with args: {item.arguments}"
+                    )
 
-        elif isinstance(item, FunctionResultContent):
-            # Truncate long results to keep logs readable
-            result_str = str(item.result)
-            if len(result_str) > 500:
-                result_str = result_str[:250] + "..." + result_str[-250:]
+                elif isinstance(item, FunctionResultContent):
+                    # Truncate long results for readability
+                    result_str = str(item.result)
+                    if len(result_str) > 500:
+                        result_str = result_str[:250] + "..." + result_str[-250:]
 
-            logger.info(
-                f"TOOL RESULT [{agent_name}]: {item.name} returned: {result_str}"
-            )
-            print(
-                f"TOOL RESULT [{agent_name}]: {item.name} returned length {len(str(item.result))}"
-            )
+                    logger.info(
+                        f"TOOL RESULT [{agent_name}]: {item.name} returned: {result_str}"
+                    )
+                    print(
+                        f"TOOL RESULT [{agent_name}]: {item.name} returned length {len(str(item.result))}"
+                    )
 
-    # If there are no function items but there's content, log that too
-    if not message.items and message.content:
-        role = message.role or "UNKNOWN"
-        logger.info(f"MESSAGE [{agent_name}/{role}]: {message.content[:100]}...")
-        print(f"MESSAGE [{agent_name}/{role}]: {message.content[:100]}...")
+        # Log content-only messages
+        elif message.content:
+            role = message.role or "UNKNOWN"
+            content_preview = str(message.content)[:100]
+            logger.info(f"MESSAGE [{agent_name}/{role}]: {content_preview}...")
+            print(f"MESSAGE [{agent_name}/{role}]: {content_preview}...")
+
+    except Exception as e:
+        logger.error(f"Error in tool call debug handler: {e}", exc_info=True)
+
+
+def _check_completion_signal(text: str) -> Optional[str]:
+    """
+    Check if text contains any completion signal.
+
+    Args:
+        text: Text to check for completion signals
+
+    Returns:
+        Found completion signal or None
+    """
+    for signal in COMPLETION_SIGNALS:
+        if signal in text:
+            return signal
+    return None
+
+
+def _check_loop_indicators(text: str) -> List[str]:
+    """
+    Check if text contains loop indicators.
+
+    Args:
+        text: Text to check for loop patterns
+
+    Returns:
+        List of found loop indicators
+    """
+    found_indicators = []
+    text_lower = text.lower()
+
+    for indicator in LOOP_INDICATORS:
+        if indicator.lower() in text_lower:
+            found_indicators.append(indicator)
+
+    return found_indicators

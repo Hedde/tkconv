@@ -1,85 +1,147 @@
 import json
 import logging
 import os
-from typing import Annotated, Any, Dict, List
+from pathlib import Path
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 from semantic_kernel.connectors.mcp import MCPStdioPlugin
 from semantic_kernel.contents.text_content import TextContent
 from semantic_kernel.functions import KernelArguments, kernel_function
 
+# Constants
+DEFAULT_SEARCH_LIMIT = 10
+DEFAULT_DOCUMENT_SEARCH_LIMIT = 20
+MAX_CANDIDATE_COUNT = 50
+TRUNCATE_RESULT_LENGTH = 500
+TRUNCATE_PREVIEW_LENGTH = 250
+
+# Database path constants
+CONTAINER_DB_PATH = "/app/db-export/tk.sqlite3"
+LOCAL_DB_RELATIVE_PATH = Path("..", "..", "data", "tk.sqlite3")
+
+# Logging constants
+LOG_PREFIX_DEBUG = "🔍 DEBUG:"
+LOG_PREFIX_INFO = "SQLite MCP:"
+
+# SQL query templates
+POLITICIAN_SEARCH_SQL = """
+SELECT * FROM Persoon 
+WHERE (achternaam LIKE ? OR voornamen LIKE ? OR roepnaam LIKE ?)
+"""
+
+DOCUMENT_SEARCH_BASE_SQL = "SELECT * FROM Document WHERE 1=1"
+
 
 class SQLiteMCPClient:
-    """Native Semantic-Kernel plugin that wraps a SQLite Municipal Content Platform (MCP) server.
+    """
+    Native Semantic-Kernel plugin for SQLite Municipal Content Platform (MCP) server.
 
-    Exposes database operations for interacting with SQLite databases:
-        • db_info        → database information (path, size, table count)
-        • list_tables    → list of available tables
-        • get_schema     → schema information for a specific table
-        • query          → execute raw SQL queries with optional parameters
-        • read_records   → read records from a table with conditions
-        • create_record  → insert a new record into a table
-        • update_records → update records in a table
-        • delete_records → delete records from a table
-
-    This client is designed specifically for the Dutch parliamentary database (tkconv)
+    Provides comprehensive database operations for the Dutch parliamentary database (tkconv)
     containing information about politicians, parties, documents, meetings, and votes.
+
+    Available operations:
+        • Database info and schema discovery
+        • Raw SQL queries with parameter binding
+        • CRUD operations (read, create, update, delete)
+        • Specialized parliamentary data searches
     """
 
-    def __init__(self, db_path: str = None) -> None:
-        # Use environment variable first, then try container path, then relative path
-        container_db_path = "/app/db-export/tk.sqlite3"  # Docker container path
-        local_db_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-            "..", "..", "sqlite-data", "tk.sqlite3"
-        )
-        
-        if db_path:
-            self.db_path = db_path
-        elif os.getenv("TKCONV_DB_PATH"):
-            self.db_path = os.getenv("TKCONV_DB_PATH")
-        elif os.path.exists(container_db_path):
-            self.db_path = container_db_path
-        else:
-            self.db_path = local_db_path
-            
+    def __init__(self, db_path: Optional[str] = None) -> None:
+        """
+        Initialize SQLite MCP client with database path resolution.
+
+        Args:
+            db_path: Optional explicit database path
+        """
+        self.db_path = self._resolve_database_path(db_path)
         self._log = logging.getLogger("mcp.sqlite_client")
         self._tables_cache: List[str] = []
         self._schema_cache: Dict[str, List[Dict]] = {}
-        
-        # Debug logging for database path resolution
-        self._log.info("SQLiteMCPClient initialized with db_path: %s", self.db_path)
-        self._log.info("TKCONV_DB_PATH environment variable: %s", os.getenv("TKCONV_DB_PATH"))
-        self._log.info("Container path exists: %s", os.path.exists(container_db_path))
-        self._log.info("Local path exists: %s", os.path.exists(local_db_path))
-        self._log.info("Selected database file exists: %s", os.path.exists(self.db_path) if self.db_path else False)
-        if self.db_path and os.path.exists(self.db_path):
-            self._log.info("Database file size: %d bytes", os.path.getsize(self.db_path))
-        
-        # List directory contents for debugging
-        if self.db_path:
-            db_dir = os.path.dirname(self.db_path)
-            if os.path.exists(db_dir):
-                self._log.info("Directory contents of %s: %s", db_dir, os.listdir(db_dir))
-            else:
-                self._log.warning("Database directory does not exist: %s", db_dir)
 
-    async def _call_tool(self, name: str, **kwargs):
-        """Launch SQLite MCP server via npx and invoke the specified tool."""
+        self._log_initialization_status()
+
+    def _resolve_database_path(self, explicit_path: Optional[str]) -> str:
+        """
+        Resolve database path using priority order: explicit > env > container > local.
+
+        Args:
+            explicit_path: Explicitly provided database path
+
+        Returns:
+            Resolved database path
+        """
+        if explicit_path:
+            return explicit_path
+
+        env_path = os.getenv("TKCONV_DB_PATH")
+        if env_path:
+            return env_path
+
+        if Path(CONTAINER_DB_PATH).exists():
+            return CONTAINER_DB_PATH
+
+        # Construct local path relative to this file
+        local_path = (
+            Path(__file__).parent.parent.parent / LOCAL_DB_RELATIVE_PATH
+        ).resolve()
+        return str(local_path)
+
+    def _log_initialization_status(self) -> None:
+        """Log detailed initialization status for debugging."""
+        self._log.info(f"{LOG_PREFIX_INFO} Initialized with db_path: {self.db_path}")
         self._log.info(
-            "Starting SQLite MCPStdioPlugin with db_path=%s, tool=%s, args=%s",
-            self.db_path,
-            name,
-            kwargs,
+            f"{LOG_PREFIX_INFO} TKCONV_DB_PATH: {os.getenv('TKCONV_DB_PATH')}"
+        )
+        self._log.info(
+            f"{LOG_PREFIX_INFO} Container path exists: {Path(CONTAINER_DB_PATH).exists()}"
         )
 
-        # Check if database file exists before proceeding
-        if not self.db_path or not os.path.exists(self.db_path):
+        db_path_obj = Path(self.db_path)
+        self._log.info(
+            f"{LOG_PREFIX_INFO} Selected file exists: {db_path_obj.exists()}"
+        )
+
+        if db_path_obj.exists():
+            try:
+                file_size = db_path_obj.stat().st_size
+                self._log.info(f"{LOG_PREFIX_INFO} Database size: {file_size} bytes")
+            except OSError as e:
+                self._log.warning(f"{LOG_PREFIX_INFO} Could not get file size: {e}")
+
+        # Log directory contents for debugging
+        if db_path_obj.parent.exists():
+            try:
+                dir_contents = list(db_path_obj.parent.iterdir())
+                self._log.info(
+                    f"{LOG_PREFIX_INFO} Directory contents: {[p.name for p in dir_contents]}"
+                )
+            except OSError as e:
+                self._log.warning(f"{LOG_PREFIX_INFO} Could not list directory: {e}")
+
+    async def _call_tool(self, name: str, **kwargs) -> Any:
+        """
+        Launch SQLite MCP server and invoke specified tool.
+
+        Args:
+            name: Tool name to invoke
+            **kwargs: Tool arguments
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            FileNotFoundError: If database file doesn't exist
+            RuntimeError: If tool execution fails
+        """
+        self._log.info(f"{LOG_PREFIX_INFO} Invoking tool {name} with args: {kwargs}")
+
+        if not Path(self.db_path).exists():
             error_msg = f"Database file not found: {self.db_path}"
             self._log.error(error_msg)
             raise FileNotFoundError(error_msg)
 
         cmd = f'npx -y mcp-sqlite "{self.db_path}"'
-        self._log.info("Command to run SQLite MCP plugin: %s", cmd)
+        self._log.debug(f"{LOG_PREFIX_INFO} Command: {cmd}")
 
         try:
             async with MCPStdioPlugin(
@@ -89,53 +151,161 @@ class SQLiteMCPClient:
                 load_tools=True,
                 load_prompts=False,
             ) as mcp_plugin:
-                self._log.info("SQLite MCPStdioPlugin started successfully")
                 tool = getattr(mcp_plugin, name, None)
                 if not tool:
                     raise RuntimeError(f"Tool {name} not found in SQLite MCP plugin")
-                self._log.info("Calling SQLite MCP tool %s with args: %s", name, kwargs)
+
                 result = await tool(**kwargs)
-                self._log.info("SQLite MCP tool %s completed successfully", name)
+                self._log.info(f"{LOG_PREFIX_INFO} Tool {name} completed successfully")
                 return result
+
         except Exception as e:
-            self._log.error("Error calling SQLite MCP tool %s: %s", name, e, exc_info=True)
+            self._log.error(f"{LOG_PREFIX_INFO} Tool {name} failed: {e}", exc_info=True)
             raise
+
+    def _convert_parameter_values(
+        self, values: Optional[List[Any]]
+    ) -> Optional[List[str]]:
+        """
+        Convert parameter values to strings for SQLite binding.
+
+        Args:
+            values: Raw parameter values
+
+        Returns:
+            String-converted parameters or None
+        """
+        if not values:
+            return None
+
+        # Handle string input (JSON parsing)
+        if isinstance(values, str):
+            try:
+                values = json.loads(values)
+            except (json.JSONDecodeError, ValueError):
+                values = [values]
+        elif not isinstance(values, list):
+            values = [values]
+
+        # Convert to strings for SQLite
+        return [str(v) if v is not None else None for v in values]
+
+    def _parse_conditions_parameter(self, conditions: Any) -> Optional[Dict[str, Any]]:
+        """
+        Parse and validate conditions parameter.
+
+        Args:
+            conditions: Raw conditions input
+
+        Returns:
+            Parsed conditions dictionary or None
+        """
+        if not conditions:
+            return None
+
+        if isinstance(conditions, str):
+            try:
+                return json.loads(conditions)
+            except (json.JSONDecodeError, ValueError):
+                self._log.warning(f"Could not parse conditions as JSON: {conditions}")
+                return None
+
+        return conditions if isinstance(conditions, dict) else None
+
+    def _build_search_sql(
+        self,
+        search_term: Optional[str],
+        document_type: Optional[str],
+        date_from: Optional[str],
+        date_to: Optional[str],
+        limit: int,
+    ) -> Tuple[str, List[str]]:
+        """
+        Build SQL query for document search.
+
+        Args:
+            search_term: Text to search for
+            document_type: Document type filter
+            date_from: Start date filter
+            date_to: End date filter
+            limit: Result limit
+
+        Returns:
+            Tuple of (SQL query, parameters)
+        """
+        sql_parts = [DOCUMENT_SEARCH_BASE_SQL]
+        params = []
+
+        if search_term:
+            sql_parts.append("AND (titel LIKE ? OR onderwerp LIKE ?)")
+            params.extend([f"%{search_term}%", f"%{search_term}%"])
+
+        if document_type:
+            sql_parts.append("AND soort = ?")
+            params.append(document_type)
+
+        if date_from:
+            sql_parts.append("AND datum >= ?")
+            params.append(date_from)
+
+        if date_to:
+            sql_parts.append("AND datum <= ?")
+            params.append(date_to)
+
+        sql_parts.extend(["ORDER BY datum DESC", f"LIMIT {limit}"])
+        return " ".join(sql_parts), params
+
+    def _log_search_results(self, operation: str, result: Any, table: str = "") -> None:
+        """
+        Log search operation results with debug information.
+
+        Args:
+            operation: Operation name for logging
+            result: Operation result
+            table: Optional table name
+        """
+        result_count = len(result) if isinstance(result, list) else 0
+        self._log.info(
+            f"{LOG_PREFIX_DEBUG} {operation} returning {result_count} records"
+            + (f" from {table}" if table else "")
+        )
+        if isinstance(result, list) and result:
+            self._log.info(f"{LOG_PREFIX_DEBUG} First record sample: {result[0]}")
 
     @kernel_function(
         name="db_info",
-        description="Get information about the SQLite database including path, existence, size, and table count",
+        description="Get comprehensive database information including path, existence, size, and table count",
     )
     async def db_info(
-        self,
-        arguments: KernelArguments | None = None,
+        self, arguments: Optional[KernelArguments] = None
     ) -> Dict[str, Any]:
-        """Get database information."""
+        """Get database information and health status."""
         try:
             result = await self._call_tool("db_info", random_string="info")
-            self._log.info("Database info result: %r", result)
+            self._log.info(f"{LOG_PREFIX_INFO} Database info retrieved successfully")
             return result
         except Exception as e:
-            self._log.error("db_info failed: %s", e)
+            self._log.error(f"{LOG_PREFIX_INFO} Database info failed: {e}")
             return {"error": str(e), "exists": False}
 
     @kernel_function(
         name="list_tables",
-        description="List all tables in the SQLite database. Useful for discovering what data is available in the Dutch parliamentary database.",
+        description="List all tables in the Dutch parliamentary database for data discovery",
     )
     async def list_tables(
         self,
-        reload: Annotated[bool, "Set to true to bypass the client-side cache"] = False,
-        arguments: KernelArguments | None = None,
+        reload: Annotated[bool, "Force refresh from server instead of cache"] = False,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[str]:
-        """List all tables in the database."""
+        """List all available database tables."""
         if self._tables_cache and not reload:
             return self._tables_cache
 
         try:
             result = await self._call_tool("list_tables", random_string="tables")
-            self._log.info("List tables result: %r", result)
-            
-            # Extract table names from the result
+            self._log.info(f"{LOG_PREFIX_INFO} Retrieved table list")
+
+            # Extract table names from result
             tables = []
             if isinstance(result, list):
                 for item in result:
@@ -143,288 +313,344 @@ class SQLiteMCPClient:
                         tables.append(item["name"])
                     elif isinstance(item, str):
                         tables.append(item)
-            
+
             self._tables_cache = tables
             return tables
+
         except Exception as e:
-            self._log.error("list_tables failed: %s", e)
+            self._log.error(f"{LOG_PREFIX_INFO} List tables failed: {e}")
             return []
 
     @kernel_function(
         name="get_table_schema",
-        description="Get the schema information for a specific table including column details. Essential for understanding the structure of parliamentary data tables like Persoon (politicians), Fractie (parties), Document (parliamentary documents), etc.",
+        description="Get detailed schema for parliamentary tables (Persoon, Fractie, Document, etc.)",
     )
     async def get_table_schema(
         self,
-        table_name: Annotated[str, "Name of the table to get schema for"],
-        reload: Annotated[bool, "Force fetch from server instead of cache"] = False,
-        arguments: KernelArguments | None = None,
+        table_name: Annotated[str, "Table name to inspect"],
+        reload: Annotated[bool, "Force refresh from server"] = False,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
-        """Get schema information for a specific table."""
+        """Get table schema information."""
         if table_name in self._schema_cache and not reload:
             return self._schema_cache[table_name]
 
         try:
             result = await self._call_tool("get_table_schema", tableName=table_name)
-            self._log.info("Get table schema result for %s: %r", table_name, result)
-            
+            self._log.info(f"{LOG_PREFIX_INFO} Schema retrieved for {table_name}")
+
             schema = result if isinstance(result, list) else []
             self._schema_cache[table_name] = schema
             return schema
+
         except Exception as e:
-            self._log.error("get_table_schema failed for %s: %s", table_name, e)
+            self._log.error(
+                f"{LOG_PREFIX_INFO} Schema retrieval failed for {table_name}: {e}"
+            )
             return []
 
     @kernel_function(
         name="query",
-        description="Execute a raw SQL query against the database. Use this for complex queries involving JOINs, aggregations, or specific filtering. Be careful with the SQL syntax - this is a direct database query.",
+        description="Execute raw SQL queries with parameter binding for complex parliamentary data analysis",
     )
     async def query(
         self,
-        sql: Annotated[str, "The SQL query to execute"],
-        values: Annotated[List[Any] | None, "Optional parameter values for parameterized queries"] = None,
-        arguments: KernelArguments | None = None,
+        sql: Annotated[str, "SQL query to execute"],
+        values: Annotated[str, "Parameter values as JSON array string"] = "",
+        arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
-        """Execute a raw SQL query."""
+        """Execute parameterized SQL query."""
         try:
             kwargs = {"sql": sql}
-            
-            # Handle values parameter - ensure it's a list or None
-            if values is not None:
-                # Handle different input formats that might come from function calling
-                if isinstance(values, str):
-                    # If values is a string, try to parse it as JSON
-                    try:
-                        import json
-                        values = json.loads(values)
-                    except (json.JSONDecodeError, ValueError):
-                        # If parsing fails, treat as single string value
-                        values = [values]
-                elif not isinstance(values, list):
-                    # Convert other types to list
-                    values = [values]
-                
-                # Convert all values to strings for SQLite parameter binding
-                # SQLite expects string parameters even for numeric values
-                if values:
-                    values = [str(v) if v is not None else None for v in values]
-                    kwargs["values"] = values
-            
-            self._log.info("Executing SQL query: %s with values: %r", sql[:100], kwargs.get("values"))
-            
+
+            # Parse values if provided
+            parameter_values = None
+            if values and values.strip():
+                try:
+                    parameter_values = (
+                        json.loads(values) if isinstance(values, str) else values
+                    )
+                except (json.JSONDecodeError, ValueError):
+                    parameter_values = [values] if values else None
+
+            converted_values = self._convert_parameter_values(parameter_values)
+
+            if converted_values:
+                kwargs["values"] = converted_values
+
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Executing SQL: {sql[:100]}..."
+                + (
+                    f" with {len(converted_values)} parameters"
+                    if converted_values
+                    else ""
+                )
+            )
+
             result = await self._call_tool("query", **kwargs)
-            self._log.info("Query result for SQL %s: %d records returned", sql[:50], 
-                          len(result) if isinstance(result, list) else 1)
-            return result if isinstance(result, list) else [result] if result else []
+            result_list = (
+                result if isinstance(result, list) else [result] if result else []
+            )
+
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Query returned {len(result_list)} records"
+            )
+            return result_list
+
         except Exception as e:
-            self._log.error("query failed for SQL %s: %s", sql[:100], e)
+            self._log.error(f"{LOG_PREFIX_INFO} Query failed: {e}")
             return []
 
     @kernel_function(
         name="read_records",
-        description="Read records from a table with optional filtering conditions. This is safer than raw SQL for simple data retrieval. Useful for getting politicians from Persoon table, parties from Fractie, documents from Document table, etc.",
+        description="Safe record retrieval from parliamentary tables with filtering and pagination",
     )
     async def read_records(
         self,
-        table: Annotated[str, "Name of the table to read from"],
-        conditions: Annotated[Dict[str, Any] | None, "Filter conditions as key-value pairs"] = None,
-        limit: Annotated[int | None, "Maximum number of records to return"] = None,
-        offset: Annotated[int | None, "Number of records to skip"] = None,
-        arguments: KernelArguments | None = None,
+        table: Annotated[str, "Table name to query"],
+        conditions: Annotated[str, "Filter conditions as JSON string"] = "",
+        limit: Annotated[int, "Maximum records to return"] = 0,
+        offset: Annotated[int, "Records to skip"] = 0,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
-        """Read records from a table with optional conditions."""
+        """Read records with optional filtering and pagination."""
         try:
             kwargs = {"table": table}
-            
-            # Handle conditions parameter 
-            if conditions is not None and conditions:
-                # Ensure conditions is a dictionary
-                if isinstance(conditions, str):
-                    try:
-                        import json
-                        conditions = json.loads(conditions)
-                    except (json.JSONDecodeError, ValueError):
-                        self._log.warning("Could not parse conditions as JSON: %s", conditions)
-                        conditions = None
-                
-                if conditions and isinstance(conditions, dict):
-                    kwargs["conditions"] = conditions
-            
-            # Handle limit and offset
-            if limit is not None:
-                kwargs["limit"] = int(limit)
-            if offset is not None:
-                kwargs["offset"] = int(offset)
-            
-            self._log.info("Reading records from table %s with conditions: %r, limit: %s", table, kwargs.get("conditions"), kwargs.get("limit"))
-            
+
+            # Parse conditions if provided
+            if conditions and conditions.strip():
+                parsed_conditions = self._parse_conditions_parameter(conditions)
+                if parsed_conditions:
+                    kwargs["conditions"] = parsed_conditions
+
+            if limit > 0:
+                kwargs["limit"] = limit
+            if offset > 0:
+                kwargs["offset"] = offset
+
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Reading from {table}"
+                + (f" with conditions" if conditions else "")
+                + (f", limit={limit}" if limit > 0 else "")
+            )
+
             result = await self._call_tool("read_records", **kwargs)
-            self._log.info("Read records result from %s: %d records", table, len(result) if isinstance(result, list) else 0)
-            return result if isinstance(result, list) else []
+            result_list = result if isinstance(result, list) else []
+
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Read {len(result_list)} records from {table}"
+            )
+            return result_list
+
         except Exception as e:
-            self._log.error("read_records failed for table %s: %s", table, e)
+            self._log.error(f"{LOG_PREFIX_INFO} Read records failed for {table}: {e}")
             return []
 
     @kernel_function(
         name="create_record",
-        description="Insert a new record into a table. Use with caution - this modifies the database. Generally not recommended for the parliamentary database as it contains official government data.",
+        description="Insert new records (use with caution on official parliamentary data)",
     )
     async def create_record(
         self,
-        table: Annotated[str, "Name of the table to insert into"],
-        data: Annotated[Dict[str, Any], "Record data as key-value pairs"],
-        arguments: KernelArguments | None = None,
+        table: Annotated[str, "Target table name"],
+        data: Annotated[str, "Record data as JSON string"],
+        arguments: Optional[KernelArguments] = None,
     ) -> Dict[str, Any]:
-        """Create a new record in a table."""
+        """Create new record in specified table."""
         try:
-            result = await self._call_tool("create_record", table=table, data=data)
-            self._log.info("Create record result in %s: %r", table, result)
+            # Parse JSON data
+            try:
+                record_data = json.loads(data) if isinstance(data, str) else data
+            except (json.JSONDecodeError, ValueError):
+                self._log.error(
+                    f"{LOG_PREFIX_INFO} Invalid JSON data for create_record: {data}"
+                )
+                return {"success": False, "error": "Invalid JSON data format"}
+
+            result = await self._call_tool(
+                "create_record", table=table, data=record_data
+            )
+            self._log.info(f"{LOG_PREFIX_INFO} Record created in {table}")
             return result if isinstance(result, dict) else {"success": True}
         except Exception as e:
-            self._log.error("create_record failed for table %s: %s", table, e)
+            self._log.error(f"{LOG_PREFIX_INFO} Create record failed for {table}: {e}")
             return {"success": False, "error": str(e)}
 
     @kernel_function(
         name="update_records",
-        description="Update records in a table based on conditions. Use with extreme caution - this modifies the database. Generally not recommended for the parliamentary database.",
+        description="Update existing records (use with extreme caution on parliamentary data)",
     )
     async def update_records(
         self,
-        table: Annotated[str, "Name of the table to update"],
-        data: Annotated[Dict[str, Any], "New values as key-value pairs"],
-        conditions: Annotated[Dict[str, Any], "Filter conditions to identify records to update"],
-        arguments: KernelArguments | None = None,
+        table: Annotated[str, "Target table name"],
+        data: Annotated[str, "New values as JSON string"],
+        conditions: Annotated[str, "Update conditions as JSON string"],
+        arguments: Optional[KernelArguments] = None,
     ) -> Dict[str, Any]:
-        """Update records in a table."""
+        """Update records matching conditions."""
         try:
-            result = await self._call_tool("update_records", table=table, data=data, conditions=conditions)
-            self._log.info("Update records result in %s: %r", table, result)
+            # Parse JSON data and conditions
+            try:
+                update_data = json.loads(data) if isinstance(data, str) else data
+                update_conditions = (
+                    json.loads(conditions)
+                    if isinstance(conditions, str)
+                    else conditions
+                )
+            except (json.JSONDecodeError, ValueError):
+                self._log.error(
+                    f"{LOG_PREFIX_INFO} Invalid JSON for update_records: data={data}, conditions={conditions}"
+                )
+                return {"success": False, "error": "Invalid JSON format"}
+
+            result = await self._call_tool(
+                "update_records",
+                table=table,
+                data=update_data,
+                conditions=update_conditions,
+            )
+            self._log.info(f"{LOG_PREFIX_INFO} Records updated in {table}")
             return result if isinstance(result, dict) else {"success": True}
         except Exception as e:
-            self._log.error("update_records failed for table %s: %s", table, e)
+            self._log.error(f"{LOG_PREFIX_INFO} Update records failed for {table}: {e}")
             return {"success": False, "error": str(e)}
 
     @kernel_function(
         name="delete_records",
-        description="Delete records from a table based on conditions. Use with extreme caution - this permanently removes data. Generally not recommended for the parliamentary database.",
+        description="Delete records (use with extreme caution - permanent data removal)",
     )
     async def delete_records(
         self,
-        table: Annotated[str, "Name of the table to delete from"],
-        conditions: Annotated[Dict[str, Any], "Filter conditions to identify records to delete"],
-        arguments: KernelArguments | None = None,
+        table: Annotated[str, "Target table name"],
+        conditions: Annotated[str, "Deletion conditions as JSON string"],
+        arguments: Optional[KernelArguments] = None,
     ) -> Dict[str, Any]:
-        """Delete records from a table."""
+        """Delete records matching conditions."""
         try:
-            result = await self._call_tool("delete_records", table=table, conditions=conditions)
-            self._log.info("Delete records result from %s: %r", table, result)
+            # Parse JSON conditions
+            try:
+                delete_conditions = (
+                    json.loads(conditions)
+                    if isinstance(conditions, str)
+                    else conditions
+                )
+            except (json.JSONDecodeError, ValueError):
+                self._log.error(
+                    f"{LOG_PREFIX_INFO} Invalid JSON conditions for delete_records: {conditions}"
+                )
+                return {"success": False, "error": "Invalid JSON conditions format"}
+
+            result = await self._call_tool(
+                "delete_records", table=table, conditions=delete_conditions
+            )
+            self._log.info(f"{LOG_PREFIX_INFO} Records deleted from {table}")
             return result if isinstance(result, dict) else {"success": True}
         except Exception as e:
-            self._log.error("delete_records failed for table %s: %s", table, e)
+            self._log.error(f"{LOG_PREFIX_INFO} Delete records failed for {table}: {e}")
             return {"success": False, "error": str(e)}
 
-    # Convenience methods for common parliamentary data queries
     @kernel_function(
         name="search_politicians",
-        description="Search for politicians (MPs) in the Persoon table by name, party affiliation, or other criteria. Returns detailed information about parliament members.",
+        description="Advanced politician search in Persoon table with name and function filtering",
     )
     async def search_politicians(
         self,
-        search_term: Annotated[str | None, "Search term to look for in names (e.g., 'Ruud Verkuijlen', 'Rudolf')"] = None,
-        function: Annotated[str | None, "Filter by function (e.g., 'Tweede Kamerlid', 'Oud Kamerlid')"] = None,
-        limit: Annotated[int, "Maximum number of results"] = 10,
-        arguments: KernelArguments | None = None,
+        search_term: Annotated[str, "Name search term"] = "",
+        function: Annotated[str, "Function filter (e.g., 'Tweede Kamerlid')"] = "",
+        limit: Annotated[int, "Maximum results"] = DEFAULT_SEARCH_LIMIT,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
         """Search for politicians with flexible criteria."""
-        # Convert parameters to proper types
-        search_term = str(search_term) if search_term is not None and search_term else None
-        function = str(function) if function is not None and function else None
-        limit = int(limit) if limit is not None else 10
-        
-        if search_term:
-            # Use SQL for name search
-            sql = """
-            SELECT * FROM Persoon 
-            WHERE (achternaam LIKE ? OR voornamen LIKE ? OR roepnaam LIKE ?)
-            """
-            params = [f"%{search_term}%"] * 3
-            
-            if function:
-                sql += " AND functie = ?"
-                params.append(function)
-            
-            sql += f" LIMIT {limit}"
-            result = await self.query(sql, params)
-            
-            # DEBUG: Log what search_politicians is returning to the agent
-            self._log.info("🔍 DEBUG: search_politicians returning %d records to agent", len(result) if isinstance(result, list) else 0)
-            if isinstance(result, list) and len(result) > 0:
-                self._log.info("🔍 DEBUG: search_politicians first record: %r", result[0])
-            
+        # Sanitize and validate inputs
+        search_term = search_term.strip() if search_term else None
+        function = function.strip() if function else None
+        limit = int(limit) if limit else DEFAULT_SEARCH_LIMIT
+
+        try:
+            if search_term:
+                # Build parameterized name search query
+                sql = POLITICIAN_SEARCH_SQL
+                params = [f"%{search_term}%"] * 3
+
+                if function:
+                    sql += " AND functie = ?"
+                    params.append(function)
+
+                sql += f" LIMIT {limit}"
+                # Convert params list to JSON string for query function
+                result = await self.query(sql, json.dumps(params))
+            else:
+                # Simple function-based filtering
+                conditions_dict = {"functie": function} if function else {}
+                conditions_json = json.dumps(conditions_dict) if conditions_dict else ""
+                result = await self.read_records("Persoon", conditions_json, limit)
+
+            self._log_search_results("search_politicians", result, "Persoon")
             return result
-        else:
-            # Use read_records for simple filtering
-            conditions = {}
-            if function:
-                conditions["functie"] = function
-            result = await self.read_records("Persoon", conditions, limit)
-            
-            # DEBUG: Log what search_politicians is returning to the agent  
-            self._log.info("🔍 DEBUG: search_politicians (read_records) returning %d records to agent", len(result) if isinstance(result, list) else 0)
-            
-            return result
+
+        except Exception as e:
+            self._log.error(f"{LOG_PREFIX_INFO} Politician search failed: {e}")
+            return []
 
     @kernel_function(
         name="get_political_parties",
-        description="Get information about political parties (fracties) including vote counts and seat numbers. Useful for understanding the current political landscape.",
+        description="Retrieve political party information with activity status filtering",
     )
     async def get_political_parties(
         self,
-        active_only: Annotated[bool, "Only return currently active parties"] = True,
-        arguments: KernelArguments | None = None,
+        active_only: Annotated[bool, "Only active parties"] = True,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
         """Get political party information."""
-        if active_only:
-            conditions = {"datumInactief": ""}  # Empty string means still active
-            return await self.read_records("Fractie", conditions)
-        else:
-            return await self.read_records("Fractie")
+        try:
+            if active_only:
+                conditions = {"datumInactief": ""}  # Empty means still active
+                result = await self.read_records("Fractie", conditions)
+            else:
+                result = await self.read_records("Fractie")
+
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Retrieved {len(result)} political parties"
+                + (" (active only)" if active_only else " (all)")
+            )
+            return result
+
+        except Exception as e:
+            self._log.error(
+                f"{LOG_PREFIX_INFO} Political parties retrieval failed: {e}"
+            )
+            return []
 
     @kernel_function(
         name="search_documents",
-        description="Search parliamentary documents by title, subject, or date. Useful for finding specific legislation, motions, or parliamentary papers.",
+        description="Advanced parliamentary document search with full-text and temporal filtering",
     )
     async def search_documents(
         self,
-        search_term: Annotated[str | None, "Search term for title or subject"] = None,
-        document_type: Annotated[str | None, "Filter by document type"] = None,
-        date_from: Annotated[str | None, "Start date (YYYY-MM-DD format)"] = None,
-        date_to: Annotated[str | None, "End date (YYYY-MM-DD format)"] = None,
-        limit: Annotated[int, "Maximum number of results"] = 20,
-        arguments: KernelArguments | None = None,
+        search_term: Annotated[str, "Title/subject search term"] = "",
+        document_type: Annotated[str, "Document type filter"] = "",
+        date_from: Annotated[str, "Start date (YYYY-MM-DD)"] = "",
+        date_to: Annotated[str, "End date (YYYY-MM-DD)"] = "",
+        limit: Annotated[int, "Maximum results"] = DEFAULT_DOCUMENT_SEARCH_LIMIT,
+        arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
-        """Search for parliamentary documents."""
-        sql_parts = ["SELECT * FROM Document WHERE 1=1"]
-        params = []
-        
-        if search_term:
-            sql_parts.append("AND (titel LIKE ? OR onderwerp LIKE ?)")
-            params.extend([f"%{search_term}%", f"%{search_term}%"])
-        
-        if document_type:
-            sql_parts.append("AND soort = ?")
-            params.append(document_type)
-        
-        if date_from:
-            sql_parts.append("AND datum >= ?")
-            params.append(date_from)
-        
-        if date_to:
-            sql_parts.append("AND datum <= ?")
-            params.append(date_to)
-        
-        sql_parts.append("ORDER BY datum DESC")
-        sql_parts.append(f"LIMIT {limit}")
-        
-        sql = " ".join(sql_parts)
-        return await self.query(sql, params)
+        """Search parliamentary documents with multiple criteria."""
+        try:
+            # Convert empty strings to None for proper query building
+            search_term = search_term.strip() if search_term else None
+            document_type = document_type.strip() if document_type else None
+            date_from = date_from.strip() if date_from else None
+            date_to = date_to.strip() if date_to else None
+
+            sql, params = self._build_search_sql(
+                search_term, document_type, date_from, date_to, int(limit)
+            )
+
+            # Convert params list to JSON string for query function
+            result = await self.query(sql, json.dumps(params) if params else "")
+            self._log_search_results("search_documents", result, "Document")
+            return result
+
+        except Exception as e:
+            self._log.error(f"{LOG_PREFIX_INFO} Document search failed: {e}")
+            return []

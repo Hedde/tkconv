@@ -1,5 +1,5 @@
 """
-Token counting utilities for managing context window size in archivist agents.
+Token counting utilities for managing context window size in agents.
 """
 
 import logging

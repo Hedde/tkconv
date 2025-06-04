@@ -6,9 +6,9 @@ async def create_research_agent():
     """Create and return the ResearchAgent."""
     return ChatCompletionAgent(
         name="ResearchAgent",
-        description="A helpful assistant with access to web search. Ask it to perform web searches. Prefer the ArchivistAgent over this one to first see if there's official documents.",
+        description="A helpful assistant with access to web search. Ask it to perform web searches.",
         instructions="""
-You are a Researcher for the Gemeente Rijswijk, questions are - unless stated otherwise - about the Gemeente Rijswijk.
+You are a Researcher for the Dutch Parliament, questions are - unless stated otherwise - about the Dutch Parliament.
 
 You find information without additional computation or quantitative analysis. CRUCIAL: You always report the WEB SOURCE / URL of your information, see below for the format:
 

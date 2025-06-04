@@ -10,8 +10,6 @@ const API_BASE_URL = 'http://localhost:8091';
 // Agent name mapping for user-friendly display - Updated to match current system
 const AGENT_DISPLAY_NAMES = {
   'ParliamentaryDataAgent': 'Tweede Kamer Expert',
-  'AlgemeneInformatieAgent': 'Algemene Assistent', 
-  'VergunningenAgent': 'Vergunningen Expert',
   'ResearchAgent': 'Onderzoeks Assistent'
 };
 

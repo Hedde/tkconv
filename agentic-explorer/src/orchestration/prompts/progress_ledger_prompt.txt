@@ -6,7 +6,34 @@ And we have assembled the following team:
 
 {{$team}}
 
-IMPORTANT COMPLETION CRITERIA:
+**🚨 CRITICAL COMPLETION DETECTION:**
+
+IMMEDIATE COMPLETION TRIGGERS - If ANY of these are found in recent messages, mark as SATISFIED:
+- "✅ TAAK VOLTOOID" 
+- "✅ PARLEMENTAIRE DATA COMPLEET"
+- "✅ INFORMATIE BESCHIKBAAR"  
+- "✅ DATABASE GERAADPLEEGD"
+- "✅ ANTWOORD GEGEVEN"
+
+**🔄 ANTI-LOOP DETECTION:**
+
+LOOP INDICATORS - Mark as LOOP if:
+- Same tool function called 3+ times with similar parameters
+- Repeated "Function failed" or "Parameter parsing" errors
+- Same search terms attempted multiple times
+- Agent trying "different approach" after failures
+- More than 2 consecutive tool failures for same query
+
+**🎯 SATISFACTION CRITERIA:**
+
+**PARLIAMENTARY QUESTIONS ARE SATISFIED WHEN:**
+- ✅ Agent found and presented ANY data about requested politician/topic
+- ✅ Agent provided completion signal (✅ TAAK VOLTOOID, etc.)
+- ✅ Agent searched database and reported results (even if limited/none)
+- ✅ Agent gave general knowledge answer with completion signal after tool failures
+- ✅ Agent provided instructional/contextual information with completion signal
+
+**IMPORTANT COMPLETION CRITERIA:**
 - If an agent has provided a response ending with "✅ TAAK VOLTOOID" or similar definitive completion signal, the request is FULLY SATISFIED
 - **DOMAIN AGENTS provide COMPLETE COVERAGE** of all services - they are the ONLY agents available
 
@@ -20,17 +47,25 @@ IMPORTANT COMPLETION CRITERIA:
 **SATISFACTION CRITERIA FOR PARLIAMENTARY QUESTIONS:**
 - If the ParliamentaryDataAgent has found and presented biographical information about a politician/MP, the request is SATISFIED
 - If the agent has provided available information and indicated limitations in the data, this is a COMPLETE response
+- If the agent has attempted database search and provided completion signal, this is SATISFIED
 - Questions about MPs, political parties, parliamentary documents, or political processes should be considered SATISFIED once the agent has searched the database and provided available information
+
+**🚨 FORCE COMPLETION CONDITIONS:**
+Mark as SATISFIED if:
+- Agent provided completion signal (✅ symbol)
+- More than 4 rounds of same query attempts
+- Tool failures + fallback answer given
+- Agent gave any substantive answer about the requested topic
 
 To make progress on the request, please answer the following questions, including necessary reasoning:
 
-    - Is the request fully satisfied? (True if complete, especially if the ParliamentaryDataAgent has provided information about the requested politician/topic, or False if the original request has yet to be SUCCESSFULLY and FULLY addressed)
+    - Is the request fully satisfied? (True if complete, especially if the ParliamentaryDataAgent has provided information about the requested politician/topic, OR if completion signal detected, OR if substantial attempt made with fallback, or False if the original request has yet to be SUCCESSFULLY and FULLY addressed)
     - Are we in a loop where we are repeating the same requests and / or getting the same responses as before?
       Loops can span multiple turns, and can include repeated actions like scrolling up or down more than a
-      handful of times.
+      handful of times, OR repeated tool failures, OR same function calls with similar parameters.
     - Are we making forward progress? (True if just starting, or recent messages are adding value. False if recent
       messages show evidence of being stuck in a loop or if there is evidence of significant barriers to success
-      such as the inability to read from a required file)
+      such as the inability to read from a required file, OR repeated tool failures)
     - Who should speak next? (select from: {{$names}})
     - What instruction or question would you give this team member? (Phrase as if speaking directly to them, and
       include any specific information they may need)
