@@ -41,11 +41,11 @@ services:
     environment:
       - MINIMAL_MODE=true
     healthcheck:
-      test: ["CMD", "test", "-f", "/app/tk.sqlite3"]
+      test: ["CMD", "sh", "-c", "test -f /app/tk.sqlite3 || pgrep -f 'tksync-skiptoken.sh' >/dev/null"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 300s
 
   tkserv-minimal:
     image: ${TKCONV_IMAGE:-tkconv:latest}

@@ -3,7 +3,9 @@
 echo "Starting INTELLIGENT SKIPTOKEN-BASED sync..."
 
 # Starting skiptoken - May 2025 data 
-INITIAL_SKIPTOKEN=22500000
+INITIAL_SKIPTOKEN=20000000
+# Higher skiptoken for large datasets like Document to skip older data
+DOCUMENT_SKIPTOKEN=22500000
 
 # Exponential backoff intervals when 0 entries found
 INTERVALS="500000 1000000 2000000 4000000 8000000 16000000"
@@ -27,6 +29,16 @@ PROCESS_ENTITIES="Stemming Toezegging Reservering"
 META_ENTITIES="DocumentVersie CommissieContactinformatie"
 
 ALL_CATEGORIES="$BASE_ENTITIES $SEAT_ENTITIES $PERSON_MAPPING_ENTITIES $CORE_ENTITIES $ACTOR_ENTITIES $PERSON_DATA_ENTITIES $PROCESS_ENTITIES $META_ENTITIES"
+
+# Function to get appropriate skiptoken for category
+get_skiptoken() {
+  category=$1
+  if [ "$category" = "Document" ]; then
+    echo $DOCUMENT_SKIPTOKEN
+  else
+    echo $INITIAL_SKIPTOKEN
+  fi
+}
 
 # Function to run command with retries
 retry_command() {
@@ -62,19 +74,55 @@ smart_fetch_category() {
     sqlite3 xml.sqlite3 "CREATE TABLE IF NOT EXISTS $category (skiptoken INT);" 2>/dev/null || true
     sqlite3 xml.sqlite3 "INSERT INTO $category (skiptoken) VALUES ($current_skiptoken);"
     
-    # Try to fetch data
-    result=$(tkgetxml $category 2>&1)
-    echo "$result"
+    # Try to fetch data with retry on timeout
+    max_retries=3
+    retry_count=0
+    success=false
     
-    # Check if we got any data
+    while [ $retry_count -lt $max_retries ] && [ "$success" = "false" ]; do
+      if [ $retry_count -gt 0 ]; then
+        echo "Retry $retry_count for $category (timeout occurred)..."
+        sleep 10  # Wait 10 seconds before retry
+      fi
+      
+      # Add small delay between requests to respect rate limiting
+      sleep 2
+      
+      result=$(tkgetxml $category 2>&1)
+      echo "$result"
+      
+      # Check for timeout specifically
+      if echo "$result" | grep -q "Connection timed out"; then
+        echo "Connection timeout for $category, will retry..."
+        retry_count=$((retry_count + 1))
+      else
+        success=true
+      fi
+    done
+    
+    if [ "$success" = "false" ]; then
+      echo "Max retries reached for $category, trying lower skiptoken..."
+      # Move back by current interval only after max retries
+      current_skiptoken=$((current_skiptoken - interval))
+      
+      if [ $current_skiptoken -lt 0 ]; then
+        echo "Reached negative skiptoken for $category, fetching from beginning..."
+        sqlite3 xml.sqlite3 "DELETE FROM $category;" 2>/dev/null || true
+        tkgetxml $category
+        return 0
+      fi
+      continue
+    fi
+    
+    # Check if we got any data (only lower skiptoken on 0 results, not timeouts)
     entries=$(echo "$result" | grep "Done - saw" | grep -o '[0-9]* new entries' | head -1 | grep -o '[0-9]*')
     
     if [ "$entries" -gt 0 ] 2>/dev/null; then
       echo "SUCCESS: Found $entries entries for $category at skiptoken $current_skiptoken"
       return 0
     else
-      echo "No data found for $category at skiptoken $current_skiptoken"
-      # Move back by current interval
+      echo "No data found for $category at skiptoken $current_skiptoken (0 results - lowering skiptoken)"
+      # Move back by current interval only when we get 0 results
       current_skiptoken=$((current_skiptoken - interval))
       
       if [ $current_skiptoken -lt 0 ]; then
@@ -105,42 +153,50 @@ if [ ! -f "/app/tk.sqlite3" ]; then
   
   echo "=== Phase 1: Base Reference Data ==="
   for category in $BASE_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 2: Seat/Position Assignments ==="
   for category in $SEAT_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 3: Person-to-Position Mappings ==="
   for category in $PERSON_MAPPING_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 4: Core Parliamentary Items ==="
   for category in $CORE_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 5: Actor Relationships ==="
   for category in $ACTOR_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 6: Additional Person Data ==="
   for category in $PERSON_DATA_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 7: Parliamentary Processes ==="
   for category in $PROCESS_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Phase 8: Metadata ==="
   for category in $META_ENTITIES; do
-    smart_fetch_category $category $INITIAL_SKIPTOKEN
+    skiptoken=$(get_skiptoken $category)
+    smart_fetch_category $category $skiptoken
   done
   
   echo "=== Converting all data to database ==="

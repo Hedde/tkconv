@@ -103,88 +103,74 @@
     // Configuration object for example questions - Based on real parliamentary data!
     const EXAMPLE_QUESTIONS = [
       {
-        text: 'Hoeveel zetels heeft de PVV in de Tweede Kamer en hoeveel stemmen hebben ze gekregen?',
-        icon: 'vote',
-        colors: 'from-green-100 to-emerald-100 group-hover:from-green-50 group-hover:to-emerald-50',
-        iconColor: 'text-green-600 group-hover:text-green-500',
-        agent: 'partijen'
-      },
-      {
-        text: 'Wat is er bekend over het wetsvoorstel huurbevriezing dat niet is ingediend?',
-        icon: 'file-text',
+        text: 'Welke vragen zijn er gesteld over asielopvang en wat zijn de hoofdpunten?',
+        icon: 'users',
         colors: 'from-blue-100 to-indigo-100 group-hover:from-blue-50 group-hover:to-indigo-50',
         iconColor: 'text-blue-600 group-hover:text-blue-500',
-        agent: 'documenten'
+        agent: 'asiel-migratie'
       },
       {
-        text: 'Wie is Ruud Verkuijlen en wat is zijn achtergrond als Kamerlid?',
-        icon: 'users',
-        colors: 'from-pink-100 to-purple-100 group-hover:from-pink-50 group-hover:to-purple-50',
-        iconColor: 'text-pink-600 group-hover:text-pink-500',
-        agent: 'kamerleden'
+        text: 'Wat wordt er besproken over de woningbouwopgave en het tekort aan woningen?',
+        icon: 'home',
+        colors: 'from-green-100 to-emerald-100 group-hover:from-green-50 group-hover:to-emerald-50',
+        iconColor: 'text-green-600 group-hover:text-green-500',
+        agent: 'woningbouw'
       },
       {
-        text: 'Welke brieven van de regering zijn er deze week binnengekomen?',
-        icon: 'mail',
-        colors: 'from-orange-100 to-amber-100 group-hover:from-orange-50 group-hover:to-amber-50',
-        iconColor: 'text-orange-600 group-hover:text-orange-500',
-        agent: 'regering'
-      },
-      {
-        text: 'Geef een overzicht van alle actieve politieke partijen en hun zetelverdeling',
-        icon: 'pie-chart',
-        colors: 'from-cyan-100 to-blue-100 group-hover:from-cyan-50 group-hover:to-blue-50',
-        iconColor: 'text-cyan-600 group-hover:text-cyan-500',
-        agent: 'fracties'
-      },
-      {
-        text: 'Wat staat er in de recente brief over eerstelijns apotheekzorg?',
-        icon: 'heart',
-        colors: 'from-violet-100 to-purple-100 group-hover:from-violet-50 group-hover:to-purple-50',
-        iconColor: 'text-violet-600 group-hover:text-violet-500',
-        agent: 'zorgbeleid'
-      },
-      {
-        text: 'Hoeveel moties zijn er dit jaar ingediend en wat zijn de meest recente?',
-        icon: 'scroll',
+        text: 'Welke klimaatmaatregelen en het Aanvullend Klimaatpakket worden besproken?',
+        icon: 'leaf',
         colors: 'from-emerald-100 to-green-100 group-hover:from-emerald-50 group-hover:to-green-50',
         iconColor: 'text-emerald-600 group-hover:text-emerald-500',
-        agent: 'moties'
+        agent: 'klimaat-energie'
       },
       {
-        text: 'Wie is Doğukan Ergin en uit welke plaats komt hij?',
-        icon: 'user',
-        colors: 'from-yellow-100 to-orange-100 group-hover:from-yellow-50 group-hover:to-orange-50',
-        iconColor: 'text-yellow-600 group-hover:text-yellow-500',
-        agent: 'biografie'
-      },
-      {
-        text: 'Welke schriftelijke vragen zijn er gesteld en wat zijn de antwoorden?',
-        icon: 'help-circle',
-        colors: 'from-teal-100 to-cyan-100 group-hover:from-teal-50 group-hover:to-cyan-50',
-        iconColor: 'text-teal-600 group-hover:text-teal-500',
-        agent: 'kamervragen'
-      },
-      {
-        text: 'Wat is de motie van Eerdmans en Bikker over het Skaeve Huse programma?',
-        icon: 'home',
+        text: 'Welke problemen zijn er met de langdurige zorg en marktwerking in de zorg?',
+        icon: 'heart',
         colors: 'from-red-100 to-pink-100 group-hover:from-red-50 group-hover:to-pink-50',
         iconColor: 'text-red-600 group-hover:text-red-500',
-        agent: 'motie-specifiek'
+        agent: 'zorg-gezondheidszorg'
       },
       {
-        text: 'Welke partij heeft de meeste stemmen gekregen en hoe verhoudt zich dat tot de zetelverdeling?',
-        icon: 'bar-chart-3',
-        colors: 'from-indigo-100 to-blue-100 group-hover:from-indigo-50 group-hover:to-blue-50',
-        iconColor: 'text-indigo-600 group-hover:text-indigo-500',
-        agent: 'verkiezingen'
-      },
-      {
-        text: 'Wat is er te vinden over Bram Kouwenhoven uit Gouda?',
-        icon: 'map-pin',
+        text: 'Wat wordt er besproken over medicinale cannabis in de Tweede Kamer?',
+        icon: 'pill',
         colors: 'from-purple-100 to-violet-100 group-hover:from-purple-50 group-hover:to-violet-50',
         iconColor: 'text-purple-600 group-hover:text-purple-500',
-        agent: 'kamerlid-profiel'
+        agent: 'medicinale-cannabis'
+      },
+      {
+        text: 'Welke discussies zijn er over politieonderwijs en de Politieacademie?',
+        icon: 'shield',
+        colors: 'from-orange-100 to-amber-100 group-hover:from-orange-50 group-hover:to-amber-50',
+        iconColor: 'text-orange-600 group-hover:text-orange-500',
+        agent: 'politieonderwijs'
+      },
+      {
+        text: 'Wat wordt er besproken over de erkenning van de Palestijnse Staat?',
+        icon: 'globe',
+        colors: 'from-cyan-100 to-blue-100 group-hover:from-cyan-50 group-hover:to-blue-50',
+        iconColor: 'text-cyan-600 group-hover:text-cyan-500',
+        agent: 'internationale-zaken'
+      },
+      {
+        text: 'Welke investeringsplannen heeft Schiphol en waarom wordt er geen dividend uitgekeerd?',
+        icon: 'plane',
+        colors: 'from-indigo-100 to-purple-100 group-hover:from-indigo-50 group-hover:to-purple-50',
+        iconColor: 'text-indigo-600 group-hover:text-indigo-500',
+        agent: 'schiphol-financien'
+      },
+      {
+        text: 'Welke politieke partijen zitten in de Tweede Kamer en hoeveel zetels hebben zij?',
+        icon: 'vote',
+        colors: 'from-yellow-100 to-orange-100 group-hover:from-yellow-50 group-hover:to-orange-50',
+        iconColor: 'text-yellow-600 group-hover:text-yellow-500',
+        agent: 'fracties-zetels'
+      },
+      {
+        text: 'Wat zijn de meest recente moties en wie hebben ze ingediend?',
+        icon: 'file-text',
+        colors: 'from-teal-100 to-cyan-100 group-hover:from-teal-50 group-hover:to-cyan-50',
+        iconColor: 'text-teal-600 group-hover:text-teal-500',
+        agent: 'recente-moties'
       }
     ];
 
