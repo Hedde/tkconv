@@ -144,7 +144,7 @@ cd tkconv
 ```
 
 #### 2. Environment Configuration
-Maak een `.env` file aan in de root directory met je OpenAI credentials:
+Maak een `.env` file aan in de `agentic-explorer/` directory met je OpenAI credentials:
 
 ```env
 # Verplichte configuratie
