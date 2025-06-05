@@ -128,42 +128,61 @@ Agents kunnen naar elkaar verwijzen voor gespecialiseerde expertise:
 - **DocumentAgent** → VotingAgent voor stemmingen over een motie
 - **VotingAgent** → CaseAgent voor procedures rondom besluit
 
-## 🚀 Deployment
+## 🚀 Getting Started
 
 ### Prerequisites
 - Docker & Docker Compose
 - OpenAI API Key
-- 8GB+ RAM (voor SQLite database operations)
+- 4GB+ RAM (voor database operations)
 
 ### Quick Start
+
+#### 1. Repository Setup
 ```bash
-# Clone en start services
 git clone <repository>
-cd tkconv/agentic-explorer
-
-# Set environment variables
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_MODEL="gpt-4o"
-
-# Start full stack
-docker compose up -d
-
-# Access API: http://localhost:8091
-# Access Demo: Open demo/index.html
+cd tkconv
 ```
 
-### Environment Configuration
+#### 2. Environment Configuration
+Maak een `.env` file aan in de root directory met je OpenAI credentials:
 
 ```env
-# Core Configuration
-OPENAI_API_KEY=sk-...                    # OpenAI API access
-OPENAI_MODEL=gpt-4o                      # Model selection
-API_PORT=8091                            # FastAPI server port
+# Verplichte configuratie
+OPENAI_API_KEY=sk-...                    # Je OpenAI API key
+OPENAI_MODEL=gpt-4o                      # Aanbevolen model
 
-# Data Sync Configuration  
-CRITICAL_ENTITIES_SKIPTOKEN=15000000     # Persoon/Fractie priority
+# Optionele configuratie
+API_PORT=8091                            # FastAPI server port
+CRITICAL_ENTITIES_SKIPTOKEN=15000000     # Persoon/Fractie priority sync
 DOCUMENT_SKIPTOKEN=22500000              # Document filtering
 INITIAL_SKIPTOKEN=20000000               # Standard entities
+```
+
+#### 3. Start met Minimal Dataset
+Voor snelle development met beperkte dataset:
+```bash
+# Start minimal setup met watch mode voor live reloading
+docker-compose -f docker-compose.minimal.yml up --build --watch
+```
+
+#### 4. Toegang tot Services
+- **API**: http://localhost:8091
+- **Agentic UI**: Open `agentic-explorer/demo/index.html` in browser
+- **Health Check**: http://localhost:8091/health
+
+### ⚠️ Frontend Configuration
+
+De demo UI heeft momenteel een hardcoded backend URL in `agentic-explorer/demo/app.js`:
+```javascript
+const API_BASE_URL = 'http://localhost:8091';
+```
+
+Bij andere poorten of deployment wijzig deze URL dienovereenkomstig.
+
+### Full Dataset
+Voor productie met complete TK dataset:
+```bash
+docker-compose up --build
 ```
 
 ## 🔄 Data Synchronization
@@ -259,18 +278,6 @@ Real-time weergave van agent reasoning process in frontend.
 - Completion signal enforcement
 
 ## 🧪 Development
-
-### Running Tests
-```bash
-# Unit tests
-python -m pytest tests/
-
-# Integration tests  
-python -m pytest tests/integration/
-
-# Agent behavior tests
-python -m pytest tests/agents/
-```
 
 ### Code Standards
 - **Type Hints**: Comprehensive typing voor alle functies
