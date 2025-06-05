@@ -9,12 +9,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi.responses import StreamingResponse
-from semantic_kernel.agents.runtime import InProcessRuntime
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
-from semantic_kernel.functions.kernel_arguments import KernelArguments
-from semantic_kernel.kernel import Kernel
-from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
-
 from orchestration.agents import agents
 from orchestration.callbacks import make_streaming_callback
 from orchestration.constants import (
@@ -25,6 +19,11 @@ from orchestration.constants import (
     SystemSteps,
 )
 from orchestration.magentic import create_magentic_orchestration
+from semantic_kernel.agents.runtime import InProcessRuntime
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.kernel import Kernel
+from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 from utils.embedding_cache_store import (
     clear_embedding,
     retrieve_embedding,

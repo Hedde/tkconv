@@ -6,12 +6,14 @@ echo "Starting INTELLIGENT SKIPTOKEN-BASED sync..."
 INITIAL_SKIPTOKEN=20000000
 # Higher skiptoken for large datasets like Document to skip older data
 DOCUMENT_SKIPTOKEN=22500000
+# Lower skiptoken for critical entities (Persoon, Fractie) to get more complete data
+CRITICAL_ENTITIES_SKIPTOKEN=15000000
 
 # Exponential backoff intervals when 0 entries found
 INTERVALS="500000 1000000 2000000 4000000 8000000 16000000"
 
 # All categories in logical dependency order to avoid relation failures
-# 1. Base reference data first
+# 1. Base reference data first (Persoon and Fractie are critical for agents)
 BASE_ENTITIES="Persoon Fractie Commissie Zaal"
 # 2. Seat/position assignments  
 SEAT_ENTITIES="FractieZetel CommissieZetel"
@@ -28,6 +30,9 @@ PROCESS_ENTITIES="Stemming Toezegging Reservering"
 # 8. Metadata
 META_ENTITIES="DocumentVersie CommissieContactinformatie"
 
+# Critical entities that need fresh data for AI agents
+CRITICAL_ENTITIES="Persoon Fractie"
+
 ALL_CATEGORIES="$BASE_ENTITIES $SEAT_ENTITIES $PERSON_MAPPING_ENTITIES $CORE_ENTITIES $ACTOR_ENTITIES $PERSON_DATA_ENTITIES $PROCESS_ENTITIES $META_ENTITIES"
 
 # Function to get appropriate skiptoken for category
@@ -35,9 +40,22 @@ get_skiptoken() {
   category=$1
   if [ "$category" = "Document" ]; then
     echo $DOCUMENT_SKIPTOKEN
+  elif [ "$category" = "Persoon" ] || [ "$category" = "Fractie" ]; then
+    echo $CRITICAL_ENTITIES_SKIPTOKEN
   else
     echo $INITIAL_SKIPTOKEN
   fi
+}
+
+# Function to check if category is critical (needs refresh on restart)
+is_critical_entity() {
+  category=$1
+  for critical in $CRITICAL_ENTITIES; do
+    if [ "$category" = "$critical" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # Function to run command with retries
@@ -59,16 +77,24 @@ retry_command() {
 smart_fetch_category() {
   category=$1
   start_skiptoken=$2
+  force_refresh=${3:-false}
   
-  echo "=== Smart fetching $category starting from skiptoken $start_skiptoken ==="
+  if [ "$force_refresh" = "true" ]; then
+    echo "=== FORCE REFRESH: $category starting from skiptoken $start_skiptoken ==="
+  else
+    echo "=== Smart fetching $category starting from skiptoken $start_skiptoken ==="
+  fi
   
   current_skiptoken=$start_skiptoken
   
   for interval in $INTERVALS; do
     echo "Trying $category at skiptoken $current_skiptoken..."
     
-    # Clear existing data for this category
-    sqlite3 xml.sqlite3 "DELETE FROM $category;" 2>/dev/null || true
+    # Clear existing data for this category if force refresh or critical entity
+    if [ "$force_refresh" = "true" ] || is_critical_entity "$category"; then
+      echo "Clearing existing $category data for fresh sync..."
+      sqlite3 xml.sqlite3 "DELETE FROM $category;" 2>/dev/null || true
+    fi
     
     # Set the skiptoken manually in the database  
     sqlite3 xml.sqlite3 "CREATE TABLE IF NOT EXISTS $category (skiptoken INT);" 2>/dev/null || true
@@ -151,10 +177,13 @@ if [ ! -f "/app/tk.sqlite3" ]; then
   cp /workdir/tk.xslt /app/tk.xslt
   cp /workdir/tk-div.xslt /app/tk-div.xslt
   
-  echo "=== Phase 1: Base Reference Data ==="
+  echo "=== Phase 1: Base Reference Data (Critical entities with lower skiptoken) ==="
   for category in $BASE_ENTITIES; do
     skiptoken=$(get_skiptoken $category)
-    smart_fetch_category $category $skiptoken
+    if is_critical_entity "$category"; then
+      echo "*** CRITICAL ENTITY: $category using lower skiptoken $skiptoken ***"
+    fi
+    smart_fetch_category $category $skiptoken true
   done
   
   echo "=== Phase 2: Seat/Position Assignments ==="
@@ -213,14 +242,31 @@ if [ ! -f "/app/tk.sqlite3" ]; then
   touch "/app/.first_run_done"
   
 else
-  echo "=== MAINTENANCE: Incremental update ==="
+  echo "=== RESTART DETECTED: Refreshing critical entities for AI agents ==="
   
-  # Normal incremental updates for all categories
-  retry_command tkgetxml $ALL_CATEGORIES
+  # Force refresh critical entities (Persoon, Fractie) on every restart
+  echo "*** Forcing fresh sync of critical entities: $CRITICAL_ENTITIES ***"
+  for category in $CRITICAL_ENTITIES; do
+    skiptoken=$(get_skiptoken $category)
+    echo "*** Refreshing $category with lower skiptoken $skiptoken for complete agent data ***"
+    smart_fetch_category $category $skiptoken true
+  done
+  
+  echo "=== MAINTENANCE: Incremental update for other entities ==="
+  
+  # Normal incremental updates for non-critical categories
+  non_critical_categories=""
+  for category in $ALL_CATEGORIES; do
+    if ! is_critical_entity "$category"; then
+      non_critical_categories="$non_critical_categories $category"
+    fi
+  done
+  
+  retry_command tkgetxml $non_critical_categories
   retry_command tkconv $ALL_CATEGORIES
   retry_command tkindex --days=7 --tkindex tkindex-small.sqlite3
   
-  echo "=== Maintenance complete ==="
+  echo "=== Restart maintenance complete ==="
 fi
 
 # Normal sleep schedule
@@ -233,6 +279,15 @@ fi
 while true
 do
   echo "=== INCREMENTAL UPDATE ==="
+  
+  # Periodically refresh critical entities (every 3rd cycle)
+  if [ $(($(date +%s) / 3600 % 3)) -eq 0 ]; then
+    echo "*** Periodic refresh of critical entities ***"
+    for category in $CRITICAL_ENTITIES; do
+      skiptoken=$(get_skiptoken $category)
+      smart_fetch_category $category $skiptoken true
+    done
+  fi
   
   retry_command tkgetxml $ALL_CATEGORIES
   retry_command tkconv $ALL_CATEGORIES

@@ -4,17 +4,9 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from api.streaming import magentic_ask_stream
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from semantic_kernel.agents import MagenticOrchestration
-from semantic_kernel.agents.runtime import InProcessRuntime
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
-from semantic_kernel.functions.kernel_arguments import KernelArguments
-from semantic_kernel.kernel import Kernel
-from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
-
-from api.streaming import magentic_ask_stream
 from orchestration.agents import agents
 from orchestration.callbacks import agent_response_callback
 from orchestration.constants import (
@@ -23,6 +15,13 @@ from orchestration.constants import (
     STREAMING_MAX_STALL_COUNT,
 )
 from orchestration.magentic import ObservableMagenticManager, load_prompt
+from pydantic import BaseModel, Field
+from semantic_kernel.agents import MagenticOrchestration
+from semantic_kernel.agents.runtime import InProcessRuntime
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.kernel import Kernel
+from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 from utils.embedding_cache_store import clear_embedding, get_or_create_embedding
 from utils.logging import extract_request_id
 

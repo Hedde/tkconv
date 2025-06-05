@@ -7,9 +7,16 @@ let currentThoughts = [];
 // Configuration
 const API_BASE_URL = 'http://localhost:8091';
 
-// Agent name mapping for user-friendly display - Updated to match current system
+// Agent name mapping for user-friendly display - Updated for specialized agents
 const AGENT_DISPLAY_NAMES = {
-  'ParliamentaryDataAgent': 'Tweede Kamer Expert',
+  // New specialized agents
+  'PersonAgent': 'Personen & Partijen Assistent',
+  'DocumentAgent': 'Documenten & Wetgeving Assistent', 
+  'VotingAgent': 'Stemmingen & Besluiten Assistent',
+  'CaseAgent': 'Procedures & Activiteiten Assistent',
+  
+  // Legacy agents (fallback)
+  'ParliamentaryDataAgent': 'Tweede Kamer Assistent',
   'ResearchAgent': 'Onderzoeks Assistent'
 };
 

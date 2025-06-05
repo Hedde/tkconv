@@ -5,6 +5,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Union
 
+from orchestration.constants import (
+    DEFAULT_MAX_RESET_COUNT,
+    DEFAULT_MAX_ROUND_COUNT,
+    DEFAULT_MAX_STALL_COUNT,
+    SystemSteps,
+)
 from pydantic import PrivateAttr
 from semantic_kernel.agents import Agent, MagenticOrchestration
 from semantic_kernel.agents.orchestration.magentic import StandardMagenticManager
@@ -15,13 +21,6 @@ from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.kernel import Kernel
 from semantic_kernel.prompt_template.kernel_prompt_template import KernelPromptTemplate
 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
-
-from orchestration.constants import (
-    DEFAULT_MAX_RESET_COUNT,
-    DEFAULT_MAX_ROUND_COUNT,
-    DEFAULT_MAX_STALL_COUNT,
-    SystemSteps,
-)
 from utils.identity import SYSTEM_IDENTITY
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"

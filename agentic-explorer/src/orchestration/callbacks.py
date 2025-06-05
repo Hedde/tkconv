@@ -6,10 +6,6 @@ import logging
 import re
 from typing import Awaitable, Callable, Dict, List, Optional
 
-from semantic_kernel.contents import ChatMessageContent, TextContent
-from semantic_kernel.contents.function_call_content import FunctionCallContent
-from semantic_kernel.contents.function_result_content import FunctionResultContent
-
 from orchestration.constants import (
     CITATION_END_MARKER,
     CITATION_SOURCE_PREFIX,
@@ -20,6 +16,9 @@ from orchestration.constants import (
     TOOL_DESCRIPTIONS,
     StreamEvents,
 )
+from semantic_kernel.contents import ChatMessageContent, TextContent
+from semantic_kernel.contents.function_call_content import FunctionCallContent
+from semantic_kernel.contents.function_result_content import FunctionResultContent
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +31,21 @@ def agent_response_callback(message: ChatMessageContent) -> None:
 def _get_tool_description(tool_name: str) -> str:
     """Get user-friendly description for a tool call."""
     return TOOL_DESCRIPTIONS.get(tool_name, f"gebruikt tool {tool_name}")
+
+
+def _generate_official_tk_url(nummer: str, soort: str) -> str:
+    """Generate official Tweede Kamer URL for document."""
+    url_patterns = {
+        "Brief regering": f"https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id={nummer}&did={nummer}",
+        "Motie": f"https://www.tweedekamer.nl/kamerstukken/moties/detail?id={nummer}&did={nummer}",
+        "Amendement": f"https://www.tweedekamer.nl/kamerstukken/amendementen/detail?id={nummer}&did={nummer}",
+        "Schriftelijke vragen": f"https://www.tweedekamer.nl/kamerstukken/schriftelijke_vragen/detail?id={nummer}&did={nummer}",
+        "Antwoord schriftelijke vragen": f"https://www.tweedekamer.nl/kamerstukken/antwoorden/detail?id={nummer}&did={nummer}",
+        "Wetsvoorstel": f"https://www.tweedekamer.nl/kamerstukken/wetsvoorstellen/detail?id={nummer}&did={nummer}",
+        "Memorie van toelichting": f"https://www.tweedekamer.nl/kamerstukken/detail?id={nummer}&did={nummer}",
+        "default": f"https://www.tweedekamer.nl/kamerstukken/detail?id={nummer}&did={nummer}",
+    }
+    return url_patterns.get(soort, url_patterns["default"])
 
 
 def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
@@ -59,6 +73,13 @@ def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
 
         # Only accept citations with valid identifiers
         if cite_data.get("id") or cite_data.get("document_id"):
+            # Generate TK URL if we have nummer and type
+            nummer = cite_data.get("document_nummer") or cite_data.get("id")
+            soort = cite_data.get("type", "")
+
+            if nummer:
+                cite_data["uri"] = _generate_official_tk_url(nummer, soort)
+
             return cite_data
 
     except Exception as e:

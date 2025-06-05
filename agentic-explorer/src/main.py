@@ -1,10 +1,9 @@
-# Copyright (c) Microsoft. All rights reserved.
+__author__ = "Hedde van der Heide"
 
 import uvicorn
+from api.endpoints import router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from api.endpoints import router
 from utils.logging import configure_logging
 
 

@@ -103,74 +103,74 @@
     // Configuration object for example questions - Based on real parliamentary data!
     const EXAMPLE_QUESTIONS = [
       {
-        text: 'Welke vragen zijn er gesteld over asielopvang en wat zijn de hoofdpunten?',
-        icon: 'users',
+        text: 'Wat speelt er momenteel rondom de erkenning van de Palestijnse Staat?',
+        icon: 'globe',
         colors: 'from-blue-100 to-indigo-100 group-hover:from-blue-50 group-hover:to-indigo-50',
         iconColor: 'text-blue-600 group-hover:text-blue-500',
-        agent: 'asiel-migratie'
+        agent: 'palestijnse-staat'
       },
       {
-        text: 'Wat wordt er besproken over de woningbouwopgave en het tekort aan woningen?',
+        text: 'Hoe staat het met de huurbevriezing en wat zijn de plannen van het kabinet?',
         icon: 'home',
         colors: 'from-green-100 to-emerald-100 group-hover:from-green-50 group-hover:to-emerald-50',
         iconColor: 'text-green-600 group-hover:text-green-500',
-        agent: 'woningbouw'
+        agent: 'huurbevriezing'
       },
       {
-        text: 'Welke klimaatmaatregelen en het Aanvullend Klimaatpakket worden besproken?',
-        icon: 'leaf',
-        colors: 'from-emerald-100 to-green-100 group-hover:from-emerald-50 group-hover:to-green-50',
-        iconColor: 'text-emerald-600 group-hover:text-emerald-500',
-        agent: 'klimaat-energie'
-      },
-      {
-        text: 'Welke problemen zijn er met de langdurige zorg en marktwerking in de zorg?',
+        text: 'Welke problemen zijn er in de jeugdzorg en wat doet de Kamer daaraan?',
         icon: 'heart',
         colors: 'from-red-100 to-pink-100 group-hover:from-red-50 group-hover:to-pink-50',
         iconColor: 'text-red-600 group-hover:text-red-500',
-        agent: 'zorg-gezondheidszorg'
+        agent: 'jeugdzorg'
       },
       {
-        text: 'Wat wordt er besproken over medicinale cannabis in de Tweede Kamer?',
-        icon: 'pill',
-        colors: 'from-purple-100 to-violet-100 group-hover:from-purple-50 group-hover:to-violet-50',
-        iconColor: 'text-purple-600 group-hover:text-purple-500',
-        agent: 'medicinale-cannabis'
-      },
-      {
-        text: 'Welke discussies zijn er over politieonderwijs en de Politieacademie?',
-        icon: 'shield',
-        colors: 'from-orange-100 to-amber-100 group-hover:from-orange-50 group-hover:to-amber-50',
-        iconColor: 'text-orange-600 group-hover:text-orange-500',
-        agent: 'politieonderwijs'
-      },
-      {
-        text: 'Wat wordt er besproken over de erkenning van de Palestijnse Staat?',
-        icon: 'globe',
-        colors: 'from-cyan-100 to-blue-100 group-hover:from-cyan-50 group-hover:to-blue-50',
-        iconColor: 'text-cyan-600 group-hover:text-cyan-500',
-        agent: 'internationale-zaken'
-      },
-      {
-        text: 'Welke investeringsplannen heeft Schiphol en waarom wordt er geen dividend uitgekeerd?',
+        text: 'Wat is de nieuwste stand van zaken rondom het F-35 project?',
         icon: 'plane',
         colors: 'from-indigo-100 to-purple-100 group-hover:from-indigo-50 group-hover:to-purple-50',
         iconColor: 'text-indigo-600 group-hover:text-indigo-500',
-        agent: 'schiphol-financien'
+        agent: 'f35-defensie'
       },
       {
-        text: 'Welke politieke partijen zitten in de Tweede Kamer en hoeveel zetels hebben zij?',
-        icon: 'vote',
-        colors: 'from-yellow-100 to-orange-100 group-hover:from-yellow-50 group-hover:to-orange-50',
-        iconColor: 'text-yellow-600 group-hover:text-yellow-500',
-        agent: 'fracties-zetels'
+        text: 'Hoe gaat het met de asielcrisis en wat zijn de laatste ontwikkelingen?',
+        icon: 'users',
+        colors: 'from-orange-100 to-amber-100 group-hover:from-orange-50 group-hover:to-amber-50',
+        iconColor: 'text-orange-600 group-hover:text-orange-500',
+        agent: 'asielcrisis'
       },
       {
-        text: 'Wat zijn de meest recente moties en wie hebben ze ingediend?',
+        text: 'Welke klimaatmaatregelen staan er op de agenda van de regering?',
+        icon: 'leaf',
+        colors: 'from-emerald-100 to-green-100 group-hover:from-emerald-50 group-hover:to-green-50',
+        iconColor: 'text-emerald-600 group-hover:text-emerald-500',
+        agent: 'klimaatmaatregelen'
+      },
+      {
+        text: 'Wat gebeurt er rondom Schiphol en de natuurvergunning discussie?',
+        icon: 'map-pin',
+        colors: 'from-cyan-100 to-blue-100 group-hover:from-cyan-50 group-hover:to-blue-50',
+        iconColor: 'text-cyan-600 group-hover:text-cyan-500',
+        agent: 'schiphol'
+      },
+      {
+        text: 'Welke moties zijn er recent ingediend en door welke Kamerleden?',
         icon: 'file-text',
+        colors: 'from-purple-100 to-violet-100 group-hover:from-purple-50 group-hover:to-violet-50',
+        iconColor: 'text-purple-600 group-hover:text-purple-500',
+        agent: 'recente-moties'
+      },
+      {
+        text: 'Hoe is de situatie rondom medicinale cannabis in Nederland?',
+        icon: 'pill',
         colors: 'from-teal-100 to-cyan-100 group-hover:from-teal-50 group-hover:to-cyan-50',
         iconColor: 'text-teal-600 group-hover:text-teal-500',
-        agent: 'recente-moties'
+        agent: 'medicinale-cannabis'
+      },
+      {
+        text: 'Wat zijn de zorgen over landbouw en stikstofbeleid in de Kamer?',
+        icon: 'sprout',
+        colors: 'from-yellow-100 to-orange-100 group-hover:from-yellow-50 group-hover:to-orange-50',
+        iconColor: 'text-yellow-600 group-hover:text-yellow-500',
+        agent: 'landbouw-stikstof'
       }
     ];
 
