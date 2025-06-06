@@ -10,15 +10,19 @@ STREAMING_MAX_ROUND_COUNT = 4
 STREAMING_MAX_RESET_COUNT = 1
 STREAMING_MAX_STALL_COUNT = 2
 
-# Tool descriptions for UI feedback
+# Tool descriptions for UI feedback - only for tools actually used by agents
 TOOL_DESCRIPTIONS = {
-    "search": "zoekt in documentendatabase",
-    "list_indices": "haalt beschikbare databases op",
-    "get_mappings": "analyseert database structuur",
-    "query": "voert database query uit",
-    "search_politicians": "zoekt naar politici",
-    "read_records": "leest database records",
-    "list_tables": "toont database tabellen",
+    "mcp_MCP_SQLite_Server_db_info": "controleert database",
+    "mcp_MCP_SQLite_Server_list_tables": "bekijkt tabellen",
+    "mcp_MCP_SQLite_Server_get_table_schema": "controleert structuur",
+    "mcp_MCP_SQLite_Server_query": "zoekt stemmingsdata",
+    "mcp_MCP_SQLite_Server_read_records": "haalt records op",
+    "mcp_MCP_SQLite_Server_create_record": "voegt data toe",
+    "mcp_MCP_SQLite_Server_update_records": "werkt data bij",
+    "mcp_MCP_SQLite_Server_delete_records": "verwijdert data",
+    "mcp_MCP_SQLite_Server_search_politicians": "zoekt politici",
+    "mcp_MCP_SQLite_Server_get_political_parties": "haalt partijen op",
+    "mcp_MCP_SQLite_Server_search_documents": "zoekt documenten",
 }
 
 # Citation parsing patterns
@@ -44,7 +48,12 @@ COMPLETION_SIGNALS = [
     "✅ DOCUMENTEN DATA COMPLEET",
     "✅ WETGEVING OVERZICHT BESCHIKBAAR",
     "✅ DOSSIER INFORMATIE VERZAMELD",
+    "✅ DOCUMENT ANTWOORD GEGEVEN",
     # Voting Agent signals
+    "✅ STEMMINGS DATA GEZOCHT",
+    "✅ FRACTIE STEMGEDRAG GEANALYSEERD",
+    "✅ VOOR/TEGEN VERDELING BEREKEND",
+    "✅ STEMMING ANTWOORD GEGEVEN",
     "✅ STEMMINGS DATA COMPLEET",
     "✅ BESLUIT INFORMATIE BESCHIKBAAR",
     "✅ VERGADERING GEGEVENS VERZAMELD",

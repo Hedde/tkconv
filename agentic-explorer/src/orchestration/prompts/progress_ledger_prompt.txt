@@ -38,17 +38,36 @@ LOOP INDICATORS - Mark as LOOP if:
 - **DOMAIN AGENTS provide COMPLETE COVERAGE** of all services - they are the ONLY agents available
 
 **DOMAIN AGENTS - COMPLETE COVERAGE:**
-- **ParliamentaryDataAgent** is the DEFINITIVE expert for all Dutch parliamentary data questions (MPs, parties, documents, meetings, votes, committees)
+- **PersonAgent** - Dutch MPs, ministers, biographical data, political careers
+- **DocumentAgent** - Parliamentary documents, laws, motions, government letters, document content
+- **VotingAgent** - Voting behavior, voting results, "how did [party] vote", for/against analysis, voting patterns
+- **CaseAgent** - Parliamentary procedures, activities, commitments, case timelines
 
-- The ParliamentaryDataAgent has COMPLETE ACCESS to the official tkconv database with real-time parliamentary data
-- The ParliamentaryDataAgent provides DEFINITIVE answers within Dutch parliamentary expertise - no other agents are needed or available
-- If an agent has successfully found and presented information about the requested topic, the request is SATISFIED
+**🎯 AGENT SELECTION RULES:**
 
-**SATISFACTION CRITERIA FOR PARLIAMENTARY QUESTIONS:**
-- If the ParliamentaryDataAgent has found and presented biographical information about a politician/MP, the request is SATISFIED
-- If the agent has provided available information and indicated limitations in the data, this is a COMPLETE response
-- If the agent has attempted database search and provided completion signal, this is SATISFIED
-- Questions about MPs, political parties, parliamentary documents, or political processes should be considered SATISFIED once the agent has searched the database and provided available information
+**VOTING QUESTIONS → VotingAgent:**
+- Any question containing "gestemd", "stemming", "stemmen", "stemgedrag"
+- "Hoe heeft [fractie/partij] gestemd over..."
+- "Voor/Tegen", "aangenomen", "verworpen"
+- "Stemmingsresultaat", "stemuitslag"
+- Questions about fractie/party voting behavior
+
+**DOCUMENT QUESTIONS → DocumentAgent:**
+- Document content, motie text, brief regering content
+- "Wat staat er in document/motie/brief..."
+- Wetgeving details, parliamentary procedures
+
+**PERSON QUESTIONS → PersonAgent:**
+- MP/minister biographical information
+- "Wie is [naam]", "Welke functie heeft..."
+- Political career information
+
+**CASE/PROCEDURE QUESTIONS → CaseAgent:**
+- Parliamentary procedure status
+- Activity timelines, case progress
+- Commitments and activities
+
+**⚠️ CRITICAL: If question contains voting keywords (gestemd, stemming, Voor/Tegen), ALWAYS select VotingAgent first!**
 
 **🚨 FORCE COMPLETION CONDITIONS:**
 Mark as SATISFIED if:

@@ -12,6 +12,7 @@ from semantic_kernel.connectors.ai.open_ai import (
 )
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.functions.kernel_arguments import KernelArguments
+
 from skills.mcp.sqlite_mcp_client import SQLiteMCPClient
 from utils.identity import SYSTEM_IDENTITY
 

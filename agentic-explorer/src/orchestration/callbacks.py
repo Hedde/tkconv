@@ -6,6 +6,10 @@ import logging
 import re
 from typing import Awaitable, Callable, Dict, List, Optional
 
+from semantic_kernel.contents import ChatMessageContent, TextContent
+from semantic_kernel.contents.function_call_content import FunctionCallContent
+from semantic_kernel.contents.function_result_content import FunctionResultContent
+
 from orchestration.constants import (
     CITATION_END_MARKER,
     CITATION_SOURCE_PREFIX,
@@ -16,9 +20,6 @@ from orchestration.constants import (
     TOOL_DESCRIPTIONS,
     StreamEvents,
 )
-from semantic_kernel.contents import ChatMessageContent, TextContent
-from semantic_kernel.contents.function_call_content import FunctionCallContent
-from semantic_kernel.contents.function_result_content import FunctionResultContent
 
 logger = logging.getLogger(__name__)
 
@@ -191,20 +192,21 @@ def make_streaming_callback(
                                 {
                                     "event": StreamEvents.AGENT_TOOL_CALL,
                                     "agent": agent_name,
-                                    "tool": item.name,
+                                    "tool": tool_description,
                                     "message": f"🔍 {agent_name} {tool_description}...",
                                 },
                             )
                         )
 
                     elif isinstance(item, FunctionResultContent):
+                        tool_description = _get_tool_description(item.name)
                         asyncio.create_task(
                             _emit_event(
                                 queue,
                                 {
                                     "event": StreamEvents.AGENT_TOOL_RESULT,
                                     "agent": agent_name,
-                                    "tool": item.name,
+                                    "tool": tool_description,
                                     "message": f"✓ {agent_name} heeft zoekresultaten ontvangen",
                                 },
                             )
