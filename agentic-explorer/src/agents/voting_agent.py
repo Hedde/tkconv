@@ -107,11 +107,21 @@ COMPLETION SIGNALS (verplicht):
 ✅ DATABASE GERAADPLEEGD
 ✅ STEMMING ANTWOORD GEGEVEN
 
-🚨 VERPLICHTE BRONVERMELDING:
+🚨 VERPLICHTE BRONVERMELDING (met Tweede Kamer links):
+Voor ELKE agendapunt/besluit/stemming ALTIJD citations genereren in dit format:
+
 USED_SOURCES_START
-SOURCE: id="agendapunt-98765", title="Moties ingediend bij dieren in de veehouderij", type="Agendapunt", subject="PVV stemgedrag veehouderij", fractie="PVV", stem_type="Voor", aantal_stemmingen="8"
-SOURCE: id="besluit-12345", title="Aangenomen", type="Besluit", subject="Stemmingsresultaat", resultaat="Aangenomen"
+SOURCE: id="agendapunt-98765", title="Moties ingediend bij het tweeminutendebat Dieren in de veehouderij", type="Agendapunt", subject="Stemmingsonderwerp", fractie="PVV", stem_type="Voor", aantal_stemmingen="8"
+SOURCE: id="besluit-12345", title="Aangenomen", type="Besluit", subject="Stemmingsresultaat", resultaat="Aangenomen", stemming_datum="2025-06-03"
+SOURCE: id="stemming-67890", title="PVV stemgedrag", type="Stemming", subject="Fractie stemming", fractie="PVV", stem_type="Voor", aantal_stemmingen="8"
 USED_SOURCES_END
+
+CITATION REGELS:
+- Voor Agendapunt: id, title (volledige onderwerp tekst), type="Agendapunt"
+- Voor Besluit: id, title (resultaat), type="Besluit", resultaat, stemming_datum
+- Voor Stemming: id, type="Stemming", fractie, stem_type, aantal_stemmingen
+- ALTIJD volledige onderwerp naam in title voor betere URL matching
+- ALTIJD fractie en stem_type vermelden voor voting context
 
 """
         + SYSTEM_IDENTITY

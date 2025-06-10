@@ -49,9 +49,66 @@ def _generate_official_tk_url(nummer: str, soort: str) -> str:
     return url_patterns.get(soort, url_patterns["default"])
 
 
+def _generate_voting_tk_url(citation_data: Dict[str, str]) -> Optional[str]:
+    """
+    Generate specialized Tweede Kamer URLs for voting/agenda data.
+    
+    Args:
+        citation_data: Parsed citation data
+        
+    Returns:
+        Generated URL or None if not applicable
+    """
+    cite_type = citation_data.get("type", "")
+    cite_id = citation_data.get("id", "")
+    
+    # For Agendapunt - try to link to committee/meeting pages
+    if cite_type == "Agendapunt":
+        onderwerp = citation_data.get("title", "").lower()
+        
+        # Check if it's about motions (moties) - try to find document number
+        if "moties ingediend" in onderwerp:
+            # For motions, try to link to general motions page
+            return "https://www.tweedekamer.nl/kamerstukken/moties"
+        
+        # Try to determine committee based on subject
+        if "veehouderij" in onderwerp or "dieren" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/landbouw_natuur_en_voedselkwaliteit"
+        elif "asiel" in onderwerp or "migratie" in onderwerp or "vreemdelingen" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/asiel_en_migratie"  
+        elif "zorg" in onderwerp or "ouderen" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/volksgezondheid_welzijn_en_sport"
+        elif "belasting" in onderwerp or "financien" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/financien"
+        elif "energie" in onderwerp or "klimaat" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/economische_zaken_en_klimaat"
+        elif "woning" in onderwerp or "huisvesting" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/binnenlandse_zaken"
+        elif "algemene financiele beschouwingen" in onderwerp or "algemene politieke beschouwingen" in onderwerp:
+            return "https://www.tweedekamer.nl/vergaderingen/plenaire_vergaderingen"
+        else:
+            # General committee meetings page
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen"
+    
+    # For Besluit - link to voting results if we have date
+    elif cite_type == "Besluit":
+        stemming_datum = citation_data.get("stemming_datum")
+        if stemming_datum:
+            # Try to construct stemming URL based on date
+            return f"https://www.tweedekamer.nl/vergaderingen/plenaire_vergaderingen"
+        else:
+            return "https://www.tweedekamer.nl/vergaderingen/stemmingen"
+    
+    # For known document numbers, use existing document URL generator
+    elif cite_type in ["Motie", "Amendement", "Brief regering"] and citation_data.get("document_nummer"):
+        return _generate_official_tk_url(citation_data["document_nummer"], cite_type)
+    
+    return None
+
+
 def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
     """
-    Parse a citation line into structured data.
+    Parse a citation line into structured data with enhanced voting support.
 
     Args:
         line: Citation line starting with SOURCE:
@@ -63,25 +120,61 @@ def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
         parts = line[len(CITATION_SOURCE_PREFIX) :].strip()
         cite_data = {}
 
+        # Parse all key="value" pairs
         for match in re.finditer(r'(\w+)="(.*?)"\s*,?', parts):
             key, value = match.groups()
 
             # Handle invalid date values
-            if key == "publication_date" and value in INVALID_DATE_VALUES:
+            if key in ["publication_date", "stemming_datum"] and value in INVALID_DATE_VALUES:
                 value = None
 
             cite_data[key] = value
 
         # Only accept citations with valid identifiers
-        if cite_data.get("id") or cite_data.get("document_id"):
-            # Generate TK URL if we have nummer and type
+        if not (cite_data.get("id") or cite_data.get("document_id") or cite_data.get("agendapunt_id")):
+            return None
+
+        cite_type = cite_data.get("type", "")
+        
+        # Generate URLs based on citation type
+        if cite_type in ["Agendapunt", "Besluit"]:
+            # Use specialized voting URL generator
+            voting_url = _generate_voting_tk_url(cite_data)
+            if voting_url:
+                cite_data["uri"] = voting_url
+                
+        elif cite_type in ["Motie", "Amendement", "Brief regering"]:
+            # Use document URL generator
             nummer = cite_data.get("document_nummer") or cite_data.get("id")
-            soort = cite_data.get("type", "")
+            if nummer and cite_type:
+                cite_data["uri"] = _generate_official_tk_url(nummer, cite_type)
+        
+        # Add enhanced metadata for voting citations
+        if cite_type == "Agendapunt":
+            cite_data["category"] = "Parlementaire Agenda"
+            cite_data["description"] = f"Agendapunt: {cite_data.get('title', 'Onbekend onderwerp')}"
+            
+        elif cite_type == "Besluit":
+            cite_data["category"] = "Stemmingsuitslag"
+            resultaat = cite_data.get("resultaat", "Onbekend")
+            cite_data["description"] = f"Besluit: {resultaat}"
+            
+        elif cite_type in ["Motie", "Amendement"]:
+            cite_data["category"] = "Parlementair Document"
+            cite_data["description"] = f"{cite_type}: {cite_data.get('title', 'Onbekend document')}"
 
-            if nummer:
-                cite_data["uri"] = _generate_official_tk_url(nummer, soort)
+        # Add voting context if available
+        if cite_data.get("fractie") and cite_data.get("stem_type"):
+            fractie = cite_data.get("fractie")
+            stem_type = cite_data.get("stem_type")
+            aantal = cite_data.get("aantal_stemmingen", "")
+            
+            if aantal:
+                cite_data["voting_context"] = f"{fractie}: {aantal}x {stem_type}"
+            else:
+                cite_data["voting_context"] = f"{fractie}: {stem_type}"
 
-            return cite_data
+        return cite_data
 
     except Exception as e:
         logger.error(f"Error parsing citation line '{line}': {e}")
