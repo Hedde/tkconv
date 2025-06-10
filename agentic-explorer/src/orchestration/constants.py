@@ -1,14 +1,14 @@
 """Constants for orchestration configuration."""
 
 # Orchestration limits
-DEFAULT_MAX_ROUND_COUNT = 3
+DEFAULT_MAX_ROUND_COUNT = 8        # Increased for complex multi-agent queries
 DEFAULT_MAX_RESET_COUNT = 1
-DEFAULT_MAX_STALL_COUNT = 2
+DEFAULT_MAX_STALL_COUNT = 3        # Slightly more tolerance
 
 # Streaming configuration
-STREAMING_MAX_ROUND_COUNT = 4
+STREAMING_MAX_ROUND_COUNT = 10     # More rounds for complex questions
 STREAMING_MAX_RESET_COUNT = 1
-STREAMING_MAX_STALL_COUNT = 2
+STREAMING_MAX_STALL_COUNT = 3      # More stall tolerance
 
 # Tool descriptions for UI feedback - only for tools actually used by agents
 TOOL_DESCRIPTIONS = {
