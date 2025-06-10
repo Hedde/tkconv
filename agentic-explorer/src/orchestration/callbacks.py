@@ -21,6 +21,9 @@ from orchestration.constants import (
     StreamEvents,
     SystemSteps,
 )
+from skills.committee_mapping_skill.committee_mapping import (
+    determine_committee_for_topic_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,30 +75,17 @@ def _generate_voting_tk_url(citation_data: Dict[str, str]) -> Optional[str]:
             # For motions, try to link to general motions page
             return "https://www.tweedekamer.nl/kamerstukken/moties"
 
-        # Try to determine committee based on subject
-        if "veehouderij" in onderwerp or "dieren" in onderwerp:
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/landbouw_natuur_en_voedselkwaliteit"
-        elif (
-            "asiel" in onderwerp
-            or "migratie" in onderwerp
-            or "vreemdelingen" in onderwerp
-        ):
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/asiel_en_migratie"
-        elif "zorg" in onderwerp or "ouderen" in onderwerp:
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/volksgezondheid_welzijn_en_sport"
-        elif "belasting" in onderwerp or "financien" in onderwerp:
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/financien"
-        elif "energie" in onderwerp or "klimaat" in onderwerp:
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/economische_zaken_en_klimaat"
-        elif "woning" in onderwerp or "huisvesting" in onderwerp:
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/binnenlandse_zaken"
-        elif (
-            "algemene financiele beschouwingen" in onderwerp
-            or "algemene politieke beschouwingen" in onderwerp
-        ):
-            return "https://www.tweedekamer.nl/vergaderingen/plenaire_vergaderingen"
-        else:
-            # General committee meetings page
+        # Use AI-powered committee mapping
+        try:
+            committee = determine_committee_for_topic_sync(onderwerp)
+            if committee and committee != "commissievergaderingen":
+                return f"https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/{committee}"
+            else:
+                # Fallback to general committee meetings page
+                return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen"
+        except Exception as e:
+            logger.warning(f"Committee mapping failed for '{onderwerp}': {e}")
+            # Fallback to general committee meetings page
             return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen"
 
     # For Besluit - link to voting results if we have date

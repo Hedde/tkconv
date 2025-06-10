@@ -94,10 +94,10 @@ async def determine_committee_for_topic(onderwerp: str) -> str:
         return "commissievergaderingen"
 
 
-# Sync wrapper for backwards compatibility
+# Sync wrapper with proper logging and AI fallback
 def determine_committee_for_topic_sync(onderwerp: str) -> str:
     """
-    Synchronous wrapper for committee determination with basic fallback mapping.
+    Synchronous wrapper for committee determination with AI and fallback mapping.
 
     Args:
         onderwerp: Parliamentary topic or agenda item
@@ -105,22 +105,57 @@ def determine_committee_for_topic_sync(onderwerp: str) -> str:
     Returns:
         Committee name for URL construction
     """
+    logger.info(f"Committee mapping requested for: '{onderwerp}'")
+
+    try:
+        # Try AI-powered mapping first if credentials available
+        openai_model = os.getenv("OPENAI_MODEL")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+
+        if openai_model and openai_api_key:
+            # We're in sync context, so use asyncio to run async function
+            import asyncio
+
+            try:
+                # Try to use existing event loop or create new one
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Can't use await in running loop, fall back to keyword mapping
+                    logger.debug(
+                        "Event loop already running, using fallback keyword mapping"
+                    )
+                else:
+                    result = loop.run_until_complete(
+                        determine_committee_for_topic(onderwerp)
+                    )
+                    logger.info(
+                        f"AI committee mapping succeeded: '{onderwerp}' → '{result}'"
+                    )
+                    return result
+            except Exception as e:
+                logger.warning(f"AI committee mapping failed, using fallback: {e}")
+    except Exception as e:
+        logger.warning(f"Committee mapping setup failed, using fallback: {e}")
+
+    # Fallback to keyword mapping with logging
     onderwerp_lower = onderwerp.lower()
 
-    # Basic keyword mapping as fallback
     if "veehouderij" in onderwerp_lower or "dieren" in onderwerp_lower:
-        return "landbouw_natuur_en_voedselkwaliteit"
+        result = "landbouw_natuur_en_voedselkwaliteit"
     elif "asiel" in onderwerp_lower or "migratie" in onderwerp_lower:
-        return "asiel_en_migratie"
+        result = "asiel_en_migratie"
     elif "zorg" in onderwerp_lower or "ouderen" in onderwerp_lower:
-        return "volksgezondheid_welzijn_en_sport"
+        result = "volksgezondheid_welzijn_en_sport"
     elif "belasting" in onderwerp_lower or "financien" in onderwerp_lower:
-        return "financien"
+        result = "financien"
     elif "energie" in onderwerp_lower or "klimaat" in onderwerp_lower:
-        return "economische_zaken_en_klimaat"
+        result = "economische_zaken_en_klimaat"
     elif "woning" in onderwerp_lower or "huisvesting" in onderwerp_lower:
-        return "binnenlandse_zaken"
+        result = "binnenlandse_zaken"
     elif "algemene" in onderwerp_lower and "beschouwingen" in onderwerp_lower:
-        return "plenaire_vergaderingen"
+        result = "plenaire_vergaderingen"
     else:
-        return "commissievergaderingen"
+        result = "commissievergaderingen"
+
+    logger.info(f"Fallback committee mapping: '{onderwerp}' → '{result}'")
+    return result

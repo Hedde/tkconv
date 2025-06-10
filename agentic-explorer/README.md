@@ -55,26 +55,33 @@ Een geavanceerd AI-agenten systeem voor Nederlandse parlementaire data analyse, 
 ```
 agentic-explorer/
 ├── src/
-│   ├── agents/                    # Specialized AI agents
+│   ├── main.py                   # FastAPI application entry point
+│   ├── requirements.txt          # Python dependencies
+│   ├── agents/                   # Specialized AI agents
 │   │   ├── person_agent.py       # PersonAgent implementation
 │   │   ├── document_agent.py     # DocumentAgent + TK URL generation
 │   │   ├── voting_agent.py       # VotingAgent implementation
-│   │   └── case_agent.py         # CaseAgent implementation
+│   │   ├── case_agent.py         # CaseAgent implementation
+│   │   └── research_agent.py     # ResearchAgent for web search
 │   ├── api/
 │   │   ├── endpoints.py          # FastAPI route definitions
 │   │   └── streaming.py          # Server-Sent Events streaming
 │   ├── orchestration/
 │   │   ├── agents.py             # Agent factory & initialization
 │   │   ├── magentic.py           # Magentic orchestration logic
+│   │   ├── callbacks.py          # Citation processing & streaming callbacks
 │   │   ├── constants.py          # Completion signals & config
 │   │   └── prompts/              # System prompts & templates
 │   ├── skills/
 │   │   ├── mcp/                  # Model Context Protocol clients
+│   │   ├── committee_mapping_skill/ # AI-powered committee detection
 │   │   └── query_rewriting_skill/ # Query optimization
 │   └── utils/
 │       ├── identity.py           # System identity configuration
-│       ├── logging.py            # Structured logging setup
-│       └── embedding_cache_store.py # Semantic search caching
+│       ├── logging.py            # Structured JSON logging setup
+│       ├── citations.py          # DRY citation system for all agents
+│       ├── embedding_cache_store.py # Semantic search caching
+│       └── embedding_generator.py # SentenceTransformer embeddings
 ├── demo/                         # Frontend demo interface
 ├── docker/                       # Docker configuration
 └── README.md                     # This file
