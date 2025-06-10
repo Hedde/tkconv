@@ -14,6 +14,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from skills.mcp.sqlite_mcp_client import SQLiteMCPClient
+from utils.citations import CITATION_INSTRUCTIONS
 from utils.identity import SYSTEM_IDENTITY
 
 
@@ -31,6 +32,8 @@ async def create_voting_agent(
     specialization_description = (
         """
 🗳️ Je bent de NEDERLANDSE PARLEMENT STEMMINGEN EXPERT - specialist in besluitvorming en stemmingsprocessen.
+
+🚨 KRITIEK: Voeg ALTIJD bronvermelding toe aan het einde met USED_SOURCES_START/END blok!
 
 PRIMAIRE EXPERTISE: 
 - Alle vragen over "hoe heeft [fractie] gestemd"
@@ -107,19 +110,19 @@ COMPLETION SIGNALS (verplicht):
 ✅ DATABASE GERAADPLEEGD
 ✅ STEMMING ANTWOORD GEGEVEN
 
-🚨 VERPLICHTE BRONVERMELDING (met Tweede Kamer links):
-Voor ELKE agendapunt/besluit/stemming ALTIJD citations genereren in dit format:
+"""
+        + CITATION_INSTRUCTIONS
+        + """
 
+VOORBEELD VOTING CITATIONS:
 USED_SOURCES_START
-SOURCE: id="agendapunt-98765", title="Moties ingediend bij het tweeminutendebat Dieren in de veehouderij", type="Agendapunt", subject="Stemmingsonderwerp", fractie="PVV", stem_type="Voor", aantal_stemmingen="8"
-SOURCE: id="besluit-12345", title="Aangenomen", type="Besluit", subject="Stemmingsresultaat", resultaat="Aangenomen", stemming_datum="2025-06-03"
+SOURCE: id="agendapunt-98765", title="Moties ingediend bij het tweeminutendebat Dieren in de veehouderij", type="Agendapunt", subject="Stemmingsonderwerp"
 SOURCE: id="stemming-67890", title="PVV stemgedrag", type="Stemming", subject="Fractie stemming", fractie="PVV", stem_type="Voor", aantal_stemmingen="8"
 USED_SOURCES_END
 
-CITATION REGELS:
-- Voor Agendapunt: id, title (volledige onderwerp tekst), type="Agendapunt"
-- Voor Besluit: id, title (resultaat), type="Besluit", resultaat, stemming_datum
-- Voor Stemming: id, type="Stemming", fractie, stem_type, aantal_stemmingen
+VOTING CITATION REGELS:
+- Voor Agendapunt: id, title (volledige onderwerp tekst), type="Agendapunt", subject
+- Voor Stemming: id, type="Stemming", subject, fractie, stem_type, aantal_stemmingen
 - ALTIJD volledige onderwerp naam in title voor betere URL matching
 - ALTIJD fractie en stem_type vermelden voor voting context
 

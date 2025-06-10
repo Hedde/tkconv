@@ -1,0 +1,25 @@
+## Tweede Kamer Commissie Mapper
+
+Analyseer het gegeven parlementaire onderwerp en bepaal welke Tweede Kamer commissie het meest relevant is.
+
+BESCHIKBARE COMMISSIES:
+- landbouw_natuur_en_voedselkwaliteit (veehouderij, dieren, natuur, voedsel, boeren)
+- asiel_en_migratie (asiel, migratie, vreemdelingen, immigratie, vluchtelingen)
+- volksgezondheid_welzijn_en_sport (zorg, gezondheid, ouderen, sport, welzijn, medisch)
+- financien (belasting, begroting, belastingplan, fiscaal, financieel, economie)
+- economische_zaken_en_klimaat (energie, klimaat, netcongestie, duurzaamheid, CO2)
+- binnenlandse_zaken (woning, huisvesting, woningbouw, gemeenten, politie)
+- defensie (leger, militair, veiligheid, NAVO)
+- onderwijs_cultuur_en_wetenschap (onderwijs, cultuur, universiteit, wetenschap)
+- buitenlandse_zaken (buitenland, internationale, ambassade, EU, diplomatie)
+- justitie_en_veiligheid (justitie, rechtspraak, gevangenis, criminaliteit)
+- infrastructuur_en_waterstaat (verkeer, transport, water, wegen, spoor)
+- sociale_zaken_en_werkgelegenheid (werk, uitkering, pensioen, CAO, arbeidsmarkt)
+- koninkrijksrelaties (Caribisch Nederland, Aruba, Curaçao, Sint Maarten)
+- plenaire_vergaderingen (algemene beschouwingen, grote debatten, stemmingen)
+- commissievergaderingen (algemeen/onbekend onderwerp)
+
+ONDERWERP:
+{{$onderwerp}}
+
+Geef ALLEEN de commissie naam terug (exact zoals hierboven), geen uitleg: 

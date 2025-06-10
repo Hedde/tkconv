@@ -109,3 +109,5 @@ class SystemSteps:
     COMPLETION_EVALUATED = "completion_evaluated"
     SELECTING_SPEAKER = "selecting_speaker"
     SPEAKER_SELECTED = "speaker_selected"
+    CITATION_PROCESSING = "citation_processing"
+    CITATION_PROCESSING_DONE = "citation_processing_done"

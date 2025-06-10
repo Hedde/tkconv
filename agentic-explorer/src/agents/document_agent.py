@@ -14,6 +14,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from skills.mcp.sqlite_mcp_client import SQLiteMCPClient
+from utils.citations import CITATION_INSTRUCTIONS
 from utils.identity import SYSTEM_IDENTITY
 
 
@@ -45,6 +46,8 @@ async def create_document_agent(
     specialization_description = (
         """
 📄 Je bent de NEDERLANDSE PARLEMENT DOCUMENTEN EXPERT - specialist in parlementaire documenten en wetgeving.
+
+🚨 KRITIEK: Voeg ALTIJD bronvermelding toe aan het einde met USED_SOURCES_START/END blok!
 
 EXPERTISE: Parlementaire documenten, wetsvoorstellen, moties, amendementen, brieven regering, kamervragen
 
@@ -98,10 +101,19 @@ COMPLETION SIGNALS (verplicht):
 ✅ DATABASE GERAADPLEEGD
 ✅ DOCUMENT ANTWOORD GEGEVEN
 
-🚨 VERPLICHTE BRONVERMELDING:
+"""
+        + CITATION_INSTRUCTIONS
+        + """
+
+VOORBEELD DOCUMENT CITATIONS:
+"Hier zijn de F-35 documenten:
+1. **Brief regering: F-35 voortgang** (2025D26039, 4 juni 2025)
+2. **Bijlage: Voortgangsrapportage** (2025D26040, 4 juni 2025)
+
 USED_SOURCES_START
-SOURCE: id="2025D25729", title="Document onderwerp", publication_date="2025-06-03", type="Brief regering", official_url="https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2025D25729&did=2025D25729", document_nummer="2025D25729", subject="Onderwerp beschrijving"
-USED_SOURCES_END
+SOURCE: id="2025D26039", title="Brief regering: Vijfentwintigste voortgangsrapportage project Verwerving F-35", type="Brief regering", subject="F-35 voortgangsrapportage", publication_date="2025-06-04", document_nummer="2025D26039", official_url="https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2025D26039&did=2025D26039"
+SOURCE: id="2025D26040", title="Bijlage: Vijfentwintigste voortgangsrapportage project Verwerving F-35", type="Bijlage", subject="F-35 bijlage document", publication_date="2025-06-04", document_nummer="2025D26040"
+USED_SOURCES_END"
 
 """
         + SYSTEM_IDENTITY

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "description": "Bepaalt welke Tweede Kamer commissie relevant is voor een gegeven parlementair onderwerp of agendapunt.",
+  "type": "completion",
+  "input_variables": [
+    {"name": "onderwerp", "description": "Het parlementaire onderwerp of agendapunt"}
+  ],
+  "execution_settings": {
+    "default": {
+      "max_tokens": 100,
+      "temperature": 0.1
+    }
+  }
+} 

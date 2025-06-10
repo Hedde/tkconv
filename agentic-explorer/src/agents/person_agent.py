@@ -14,6 +14,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from skills.mcp.sqlite_mcp_client import SQLiteMCPClient
+from utils.citations import CITATION_INSTRUCTIONS
 from utils.identity import SYSTEM_IDENTITY
 
 
@@ -64,19 +65,15 @@ COMPLETION SIGNALS (verplicht):
 ✅ DATABASE GERAADPLEEGD
 ✅ ANTWOORD GEGEVEN
 
-🚨 VERPLICHTE BRONVERMELDING:
-Je antwoord MOET ALTIJD eindigen met citations in dit EXACTE format:
+"""
+        + CITATION_INSTRUCTIONS
+        + """
 
+VOORBEELD PERSON CITATIONS:
 USED_SOURCES_START
 SOURCE: id="12345", title="Ruud Verkuijlen - Tweede Kamerlid", type="Persoon", subject="Kamerlid informatie"
 SOURCE: id="67890", title="Partij voor de Vrijheid", type="Fractie", subject="Politieke partij informatie"
 USED_SOURCES_END
-
-CRUCIALE REGELS:
-- Begin met USED_SOURCES_START (geen andere tekst ervoor)
-- Elke regel: SOURCE: id="..." (GEEN streepje -)
-- Eindig met USED_SOURCES_END (geen andere tekst erna)
-- Voor ELK gevonden persoon/partij een SOURCE regel
 
 """
         + SYSTEM_IDENTITY

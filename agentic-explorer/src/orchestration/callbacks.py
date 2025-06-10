@@ -19,6 +19,7 @@ from orchestration.constants import (
     LOOP_INDICATORS,
     TOOL_DESCRIPTIONS,
     StreamEvents,
+    SystemSteps,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,30 +53,34 @@ def _generate_official_tk_url(nummer: str, soort: str) -> str:
 def _generate_voting_tk_url(citation_data: Dict[str, str]) -> Optional[str]:
     """
     Generate specialized Tweede Kamer URLs for voting/agenda data.
-    
+
     Args:
         citation_data: Parsed citation data
-        
+
     Returns:
         Generated URL or None if not applicable
     """
     cite_type = citation_data.get("type", "")
     cite_id = citation_data.get("id", "")
-    
+
     # For Agendapunt - try to link to committee/meeting pages
     if cite_type == "Agendapunt":
         onderwerp = citation_data.get("title", "").lower()
-        
+
         # Check if it's about motions (moties) - try to find document number
         if "moties ingediend" in onderwerp:
             # For motions, try to link to general motions page
             return "https://www.tweedekamer.nl/kamerstukken/moties"
-        
+
         # Try to determine committee based on subject
         if "veehouderij" in onderwerp or "dieren" in onderwerp:
             return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/landbouw_natuur_en_voedselkwaliteit"
-        elif "asiel" in onderwerp or "migratie" in onderwerp or "vreemdelingen" in onderwerp:
-            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/asiel_en_migratie"  
+        elif (
+            "asiel" in onderwerp
+            or "migratie" in onderwerp
+            or "vreemdelingen" in onderwerp
+        ):
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/asiel_en_migratie"
         elif "zorg" in onderwerp or "ouderen" in onderwerp:
             return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/volksgezondheid_welzijn_en_sport"
         elif "belasting" in onderwerp or "financien" in onderwerp:
@@ -84,12 +89,15 @@ def _generate_voting_tk_url(citation_data: Dict[str, str]) -> Optional[str]:
             return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/economische_zaken_en_klimaat"
         elif "woning" in onderwerp or "huisvesting" in onderwerp:
             return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen/binnenlandse_zaken"
-        elif "algemene financiele beschouwingen" in onderwerp or "algemene politieke beschouwingen" in onderwerp:
+        elif (
+            "algemene financiele beschouwingen" in onderwerp
+            or "algemene politieke beschouwingen" in onderwerp
+        ):
             return "https://www.tweedekamer.nl/vergaderingen/plenaire_vergaderingen"
         else:
             # General committee meetings page
             return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen"
-    
+
     # For Besluit - link to voting results if we have date
     elif cite_type == "Besluit":
         stemming_datum = citation_data.get("stemming_datum")
@@ -98,11 +106,13 @@ def _generate_voting_tk_url(citation_data: Dict[str, str]) -> Optional[str]:
             return f"https://www.tweedekamer.nl/vergaderingen/plenaire_vergaderingen"
         else:
             return "https://www.tweedekamer.nl/vergaderingen/stemmingen"
-    
+
     # For known document numbers, use existing document URL generator
-    elif cite_type in ["Motie", "Amendement", "Brief regering"] and citation_data.get("document_nummer"):
+    elif cite_type in ["Motie", "Amendement", "Brief regering"] and citation_data.get(
+        "document_nummer"
+    ):
         return _generate_official_tk_url(citation_data["document_nummer"], cite_type)
-    
+
     return None
 
 
@@ -125,50 +135,61 @@ def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
             key, value = match.groups()
 
             # Handle invalid date values
-            if key in ["publication_date", "stemming_datum"] and value in INVALID_DATE_VALUES:
+            if (
+                key in ["publication_date", "stemming_datum"]
+                and value in INVALID_DATE_VALUES
+            ):
                 value = None
 
             cite_data[key] = value
 
         # Only accept citations with valid identifiers
-        if not (cite_data.get("id") or cite_data.get("document_id") or cite_data.get("agendapunt_id")):
+        if not (
+            cite_data.get("id")
+            or cite_data.get("document_id")
+            or cite_data.get("agendapunt_id")
+        ):
             return None
 
         cite_type = cite_data.get("type", "")
-        
+
         # Generate URLs based on citation type
         if cite_type in ["Agendapunt", "Besluit"]:
             # Use specialized voting URL generator
             voting_url = _generate_voting_tk_url(cite_data)
             if voting_url:
                 cite_data["uri"] = voting_url
-                
+
         elif cite_type in ["Motie", "Amendement", "Brief regering"]:
             # Use document URL generator
             nummer = cite_data.get("document_nummer") or cite_data.get("id")
             if nummer and cite_type:
                 cite_data["uri"] = _generate_official_tk_url(nummer, cite_type)
-        
+
         # Add enhanced metadata for voting citations
         if cite_type == "Agendapunt":
             cite_data["category"] = "Parlementaire Agenda"
-            cite_data["description"] = f"Agendapunt: {cite_data.get('title', 'Onbekend onderwerp')}"
-            
+            cite_data["description"] = (
+                f"Agendapunt: {cite_data.get('title', 'Onbekend onderwerp')}"
+            )
+
         elif cite_type == "Besluit":
             cite_data["category"] = "Stemmingsuitslag"
             resultaat = cite_data.get("resultaat", "Onbekend")
             cite_data["description"] = f"Besluit: {resultaat}"
-            
+
         elif cite_type in ["Motie", "Amendement"]:
             cite_data["category"] = "Parlementair Document"
-            cite_data["description"] = f"{cite_type}: {cite_data.get('title', 'Onbekend document')}"
+            cite_data["description"] = (
+                f"{cite_type}: {cite_data.get('title', 'Onbekend document')}"
+            )
 
         # Add voting context if available
         if cite_data.get("fractie") and cite_data.get("stem_type"):
             fractie = cite_data.get("fractie")
             stem_type = cite_data.get("stem_type")
             aantal = cite_data.get("aantal_stemmingen", "")
-            
+
             if aantal:
                 cite_data["voting_context"] = f"{fractie}: {aantal}x {stem_type}"
             else:
@@ -305,11 +326,22 @@ def make_streaming_callback(
                             )
                         )
 
-            # Process citations for relevant agents
+            # Process citations for all agents that have content
             processed_text = text_content
-            if message.name and (
-                "Agent" in message.name or "ResearchAgent" in message.name
-            ):
+            citations = []
+            if text_content.strip():
+                # Emit citation processing start
+                asyncio.create_task(
+                    _emit_event(
+                        queue,
+                        {
+                            "event": StreamEvents.SYSTEM,
+                            "step": SystemSteps.CITATION_PROCESSING,
+                            "message": "Bronvermeldingen opbouwen...",
+                        },
+                    )
+                )
+
                 processed_text, citations = _extract_citations(text_content, agent_name)
 
                 if citations:
@@ -320,6 +352,18 @@ def make_streaming_callback(
                                 "event": StreamEvents.CITATIONS_FOUND,
                                 "agent": agent_name,
                                 "citations": citations,
+                            },
+                        )
+                    )
+
+                    # Emit citation processing completion
+                    asyncio.create_task(
+                        _emit_event(
+                            queue,
+                            {
+                                "event": StreamEvents.SYSTEM,
+                                "step": SystemSteps.CITATION_PROCESSING_DONE,
+                                "message": f"Bronvermeldingen verwerkt ({len(citations)} bronnen gevonden)",
                             },
                         )
                     )

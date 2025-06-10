@@ -14,6 +14,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 
 from skills.mcp.sqlite_mcp_client import SQLiteMCPClient
+from utils.citations import CITATION_INSTRUCTIONS
 from utils.identity import SYSTEM_IDENTITY
 
 
@@ -72,19 +73,15 @@ COMPLETION SIGNALS (verplicht):
 ✅ DATABASE GERAADPLEEGD
 ✅ ANTWOORD GEGEVEN
 
-🚨 VERPLICHTE BRONVERMELDING:
-Je antwoord MOET ALTIJD eindigen met citations in dit EXACTE format:
+"""
+        + CITATION_INSTRUCTIONS
+        + """
 
+VOORBEELD CASE CITATIONS:
 USED_SOURCES_START
 SOURCE: id="54321", title="Zaak klimaatbeleid", type="Zaak", subject="Parlementaire procedure", status="Aanhangig", start_datum="2025-01-15"
 SOURCE: id="87654", title="Commissievergadering over energie", type="Activiteit", subject="Commissievergadering", datum="2025-06-03"
 USED_SOURCES_END
-
-CRUCIALE REGELS:
-- Begin met USED_SOURCES_START (geen andere tekst ervoor)
-- Elke regel: SOURCE: id="..." (GEEN streepje -)
-- Eindig met USED_SOURCES_END (geen andere tekst erna)
-- Voor ELK gevonden zaak/activiteit een SOURCE regel
 
 """
         + SYSTEM_IDENTITY
