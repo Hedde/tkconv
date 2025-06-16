@@ -23,6 +23,10 @@ LOOP INDICATORS - Mark as LOOP if:
 - Same search terms attempted multiple times
 - Agent trying "different approach" after failures
 - More than 2 consecutive tool failures for same query
+- **ROUND COUNT TRIGGERS**: 
+  - After 4 rounds: Evaluate if sufficient data collected
+  - After 5 rounds: FORCE completion to prevent endless cycling
+  - Same agent used 2+ times with similar results
 
 **🎯 SATISFACTION CRITERIA:**
 
@@ -45,23 +49,37 @@ LOOP INDICATORS - Mark as LOOP if:
 
 **🎯 AGENT SELECTION RULES:**
 
-**COMPLEX TOPICS REQUIRING MULTIPLE AGENTS:**
+**COMPLEX TOPICS REQUIRING ALL 4 AGENTS:**
 - **Jeugdzorg/Youth Care**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (ALL 4 AGENTS REQUIRED)
-- **Climate/Klimaat**: DocumentAgent + VotingAgent (policy + voting patterns)
-- **Healthcare/Zorg**: DocumentAgent + VotingAgent + PersonAgent (policy + decisions + key players)
-- **Budget/Begroting**: DocumentAgent + VotingAgent (financial docs + voting)
-- **Education/Onderwijs**: DocumentAgent + VotingAgent + CaseAgent (laws + votes + procedures)
+- **Defense/Defensie (F-35, militaire projecten)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **Climate/Klimaat**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (policy + voting + procedures + stakeholders)
+- **Healthcare/Zorg**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (policy + decisions + procedures + key players)
+- **Housing/Wonen (huurbevriezing, woningmarkt)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **Migration/Migratie (asielcrisis, immigratie)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **Agriculture/Landbouw (stikstofbeleid, boeren)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **International Relations (Palestijnse Staat, buitenland)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **Infrastructure/Infrastructuur (Schiphol, verkeer)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **Drugs Policy (medicinale cannabis)**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (complete coverage)
+- **Budget/Begroting**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (financial docs + voting + procedures + ministers)
+- **Education/Onderwijs**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (laws + votes + procedures + key figures)
 
-**🎯 JEUGDZORG KWALITEITSSTANDAARD - COMPREHENSIEVE COVERAGE:**
-Voor vragen over "jeugdzorg", "youth care", of "wat doet de Kamer" betreffende kinder/jeugd onderwerpen:
-- **Streef naar complete dekking**: Alle 4 agents leveren unieke perspectieven
-- **Aanbevolen volgorde**: DocumentAgent → VotingAgent → CaseAgent → PersonAgent
-- **Elke agent voegt waarde toe** met specifieke expertise voordat volgende spreekt
+**🎯 COMPREHENSIVE COVERAGE STANDARD - ALLE COMPLEXE ONDERWERPEN:**
+Voor alle voorbeeldvragen en complexe parlementaire onderwerpen:
+- **ALTIJD alle 4 agents gebruiken**: Complete, grondige coverage van elk onderwerp
+- **Standaard volgorde**: DocumentAgent → VotingAgent → CaseAgent → PersonAgent
+- **Detailniveau**: Elke agent levert substantiële, specifieke informatie
+- **Kwaliteitsmeting**: Antwoord is alleen compleet met input van alle 4 perspectieven
 
-**MULTI-AGENT TRIGGERS - Use ALL relevant agents for:**
-- Questions about "problemen en wat doet de Kamer" → DocumentAgent + VotingAgent + CaseAgent
-- Questions about policy + parliamentary actions → DocumentAgent + VotingAgent + PersonAgent
-- Questions requiring comprehensive overview → Use 2-3 most relevant agents
+**MULTI-AGENT TRIGGERS - Use ALL 4 agents for:**
+- **ANY of our example questions** → DocumentAgent + VotingAgent + CaseAgent + PersonAgent (ALL 4 REQUIRED)
+- Questions about "problemen en wat doet de Kamer" → DocumentAgent + VotingAgent + CaseAgent + PersonAgent
+- Questions about "stand van zaken" or "nieuwste ontwikkelingen" → DocumentAgent + VotingAgent + CaseAgent + PersonAgent
+- Questions about "wat speelt er" or "hoe staat het met" → DocumentAgent + VotingAgent + CaseAgent + PersonAgent
+- Questions about major topics (climate, housing, migration, etc.) → DocumentAgent + VotingAgent + CaseAgent + PersonAgent
+- Questions about policy + parliamentary actions → DocumentAgent + VotingAgent + CaseAgent + PersonAgent
+- Questions requiring comprehensive overview → ALL 4 agents for complete coverage
+
+**DEFAULT ASSUMPTION: Most questions deserve comprehensive, 4-agent coverage unless specifically simple**
 
 **SINGLE AGENT QUESTIONS:**
 - **VOTING QUESTIONS → VotingAgent ONLY:**
@@ -83,46 +101,69 @@ Voor vragen over "jeugdzorg", "youth care", of "wat doet de Kamer" betreffende k
 
 **⚠️ DEFAULT TO MULTIPLE AGENTS: If question is complex or asks "what problems + what does parliament do", use 2-3 relevant agents!**
 
-**✅ COMPLETION KADERS:**
+**✅ COMPLETION KADERS - BALANCED QUALITY + EFFICIENCY:**
 Overweeg SATISFIED wanneer:
-- Agent heeft completion signaal gegeven (✅ symbol)
-- Na meer dan 4 rounds van dezelfde query pogingen
-- Tool failures + substantieel fallback antwoord beschikbaar
-- Agent heeft nuttig antwoord gegeven over gevraagd onderwerp
-- **Voor jeugdzorg: streef naar input van alle 4 relevante agents voor optimale kwaliteit**
+- **OPTIMAL**: Alle 4 agents hebben substantiële bijdragen geleverd met concrete details
+- **GOOD**: 3 agents hebben bijgedragen + 1 agent heeft relevante data of "no results found"  
+- **ACCEPTABLE**: 2-3 agents hebben substantiële bijdragen + anderen hebben completion signals gegeven
+- **FALLBACK**: Na 5+ rounds + substantieel antwoord beschikbaar van meerdere agents
+
+**ANTI-LOOP PROTECTION:**
+- **Na 4 rounds**: Mark as SATISFIED if substantial information collected
+- **Na 5+ rounds**: FORCE SATISFIED regardless of coverage - ENGINE WILL STOP AT 6
+- **Repetitive data**: If same agent provides similar results 2+ times, move to next phase
+
+**PRIORITY: Prevent infinite loops while maintaining quality**
 
 **🔄 COMPLEXE ONDERWERPEN - OPTIMALE ORCHESTRATIE:**
 
-**VOOR JEUGDZORG VRAGEN SPECIFIEK:**
-1. **Start: DocumentAgent** (recente documenten, moties, regeringsbrieven over jeugdzorg)
-2. **Daarna: VotingAgent** (stemresultaten over jeugdzorg moties en voorstellen)  
-3. **Vervolgens: CaseAgent** (parlementaire activiteiten, procedures, commissiewerk jeugdzorg)
-4. **Tenslotte: PersonAgent** (belangrijke Kamerleden: Westerveld, Dobbe, Ceder, Bruyning, etc.)
+**ALGEMENE MULTI-AGENT STRATEGIE:**
+Voor "stand van zaken", "nieuwste ontwikkelingen", major projects, comprehensive overviews:
+1. **Start: DocumentAgent** (recente documenten, rapporten, regeringsbrieven)
+2. **Daarna: VotingAgent** (stemresultaten over relevante moties en voorstellen)  
+3. **Vervolgens: CaseAgent** (parlementaire activiteiten, procedures, commissiewerk)
+4. **Tenslotte: PersonAgent** (belangrijke stakeholders, ministers, Kamerleden)
+
+**SPECIFIEKE VOORBEELDEN:**
+- **F-35 project**: Document content van voortgangsrapportages + stemgedrag over F-35 moties + procedurele timeline + key ministers/Kamerleden
+- **Jeugdzorg**: Documents + voting patterns + activities + stakeholders (Westerveld, Dobbe, etc.)
+- **Klimaatbeleid**: Beleidsdocumenten + stemmingen + procedures + betrokken personen
 
 **KWALITEITSCHECK VOOR COMPLEXE ONDERWERPEN:**
-Voor optimaal jeugdzorg antwoord, streef naar:
-- ✅ DocumentAgent heeft recente documenten/moties geleverd
+Voor optimale antwoorden op complex topics, streef naar:
+- ✅ DocumentAgent heeft recente documenten/rapporten geleverd
 - ✅ VotingAgent heeft stemdata/resultaten bijgedragen
 - ✅ CaseAgent heeft activiteiten/procedures toegevoegd  
 - ✅ PersonAgent heeft stakeholder informatie verstrekt
-- **Wanneer alle 4 perspectieven gedekt → Excellent coverage bereikt**
+- **Wanneer alle 4 perspectieven gedekt → Complete coverage bereikt**
 
 **AGENT BIJDRAGE TRACKING:**
-Monitor welke agents hebben bijgedragen aan jeugdzorg onderwerpen:
-- Bij 1-2 agents gebruikt → Overweeg volgende relevante agent
-- Bij 3 agents gebruikt → Evalueer of finale perspectief waardevol is
-- Bij alle 4 agents gebruikt → Complete coverage bereikt
+Monitor welke agents hebben bijgedragen aan complexe onderwerpen:
+- Bij 1-2 agents gebruikt → Overweeg volgende relevante agent voor vollediger beeld
+- Bij 3 agents gebruikt → Evalueer of finale perspectief waardevol is voor completeness
+- Bij alle 4 agents gebruikt → Complete coverage bereikt voor optimal answer quality
+
+**TOPIC RECOGNITION FOR 4-AGENT COVERAGE:**
+Deze onderwerpen vereisen ALTIJD alle 4 agents:
+- **Alle voorbeeldvragen uit interface** (Palestijnse Staat, huurbevriezing, jeugdzorg, F-35, asielcrisis, klimaat, Schiphol, moties, cannabis, landbouw)
+- **Stand van zaken vragen** ("nieuwste ontwikkelingen", "huidige situatie", "wat speelt er", "hoe staat het")
+- **Policy comprehensive overview** ("welke maatregelen", "wat zijn de plannen", "wat doet de Kamer")
+- **Problem analysis questions** ("welke problemen", "wat zijn de zorgen")
+- **Project status questions** ("F-35 project", "infrastructuurprojecten")
+- **Recent developments** ("laatste ontwikkelingen", "recent ingediend")
+
+**RESULT EXPECTATION: Rich, detailed answers with concrete facts, voting results, procedural timelines, and key stakeholders**
 
 To make progress on the request, please answer the following questions, including necessary reasoning:
 
-    - Is the request fully satisfied? (True if complete, especially if ALL necessary agents have contributed for complex topics, OR if completion signal detected, OR if substantial attempt made with fallback, or False if the original request has yet to be SUCCESSFULLY and FULLY addressed. **Voor jeugdzorg: streef naar alle 4 agent perspectieven voor optimale kwaliteit**)
+    - Is the request fully satisfied? (True if optimal coverage achieved with 3-4 agents OR after 4+ rounds with substantial data collected OR if completion signals detected OR if substantial attempt made with fallback. FORCE True after 5 rounds - ENGINE STOPS AT 6. **Balance quality with efficiency - prevent endless cycling**)
     - Are we in a loop where we are repeating the same requests and / or getting the same responses as before?
       Loops can span multiple turns, and can include repeated actions like scrolling up or down more than a
       handful of times, OR repeated tool failures, OR same function calls with similar parameters.
     - Are we making forward progress? (True if just starting, or recent messages are adding value. False if recent
       messages show evidence of being stuck in a loop or if there is evidence of significant barriers to success
       such as the inability to read from a required file, OR repeated tool failures)
-    - Who should speak next? (For complex topics like jeugdzorg, cycle through ALL relevant agents in order. For simple questions, select ONE agent from: {{$names}})
+    - Who should speak next? (For complex topics like F-35, jeugdzorg, defense, infrastructure, cycle through ALL relevant agents in order: DocumentAgent → VotingAgent → CaseAgent → PersonAgent. For simple questions, select ONE agent from: {{$names}})
     - What instruction or question would you give this team member? (Phrase as if speaking directly to them, and
       include any specific information they may need)
 
