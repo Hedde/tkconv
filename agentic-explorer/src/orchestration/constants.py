@@ -1,21 +1,21 @@
 """Constants for orchestration configuration."""
 
 # Orchestration limits
-DEFAULT_MAX_ROUND_COUNT = 8        # Increased for complex multi-agent queries
+DEFAULT_MAX_ROUND_COUNT = 8  # Increased for complex multi-agent queries
 DEFAULT_MAX_RESET_COUNT = 1
-DEFAULT_MAX_STALL_COUNT = 3        # Slightly more tolerance
+DEFAULT_MAX_STALL_COUNT = 3  # Slightly more tolerance
 
 # Streaming configuration
-STREAMING_MAX_ROUND_COUNT = 10     # More rounds for complex questions
+STREAMING_MAX_ROUND_COUNT = 10  # More rounds for complex questions
 STREAMING_MAX_RESET_COUNT = 1
-STREAMING_MAX_STALL_COUNT = 3      # More stall tolerance
+STREAMING_MAX_STALL_COUNT = 3  # More stall tolerance
 
 # Tool descriptions for UI feedback - only for tools actually used by agents
 TOOL_DESCRIPTIONS = {
     "mcp_MCP_SQLite_Server_db_info": "controleert database",
     "mcp_MCP_SQLite_Server_list_tables": "bekijkt tabellen",
     "mcp_MCP_SQLite_Server_get_table_schema": "controleert structuur",
-    "mcp_MCP_SQLite_Server_query": "zoekt stemmingsdata",
+    "mcp_MCP_SQLite_Server_query": "zoekt in parlementaire data",
     "mcp_MCP_SQLite_Server_read_records": "haalt records op",
     "mcp_MCP_SQLite_Server_create_record": "voegt data toe",
     "mcp_MCP_SQLite_Server_update_records": "werkt data bij",
@@ -23,6 +23,33 @@ TOOL_DESCRIPTIONS = {
     "mcp_MCP_SQLite_Server_search_politicians": "zoekt politici",
     "mcp_MCP_SQLite_Server_get_political_parties": "haalt partijen op",
     "mcp_MCP_SQLite_Server_search_documents": "zoekt documenten",
+    "mcp_MCP_SQLite_Server_search_full_text": "doorzoekt volledige document inhoud",
+    "mcp_MCP_SQLite_Server_get_document_content": "haalt specifieke document content op",
+}
+
+# Database information for agents
+DATABASE_INFO = {
+    "metadata_db": {
+        "name": "tk.sqlite3",
+        "description": "Hoofddatabase met alle metadata",
+        "tables": [
+            "Document",
+            "Persoon",
+            "Fractie",
+            "Zaak",
+            "Activiteit",
+            "Stemming",
+            "Agendapunt",
+        ],
+        "usage": "Gebruik voor overzichten, metadata, en structurele queries",
+    },
+    "fulltext_db": {
+        "name": "tkindex-minimal.sqlite3",
+        "description": "Full-text search database met volledige documentinhoud",
+        "tables": ["docsearch"],
+        "usage": "Gebruik alleen voor citaten, specifieke tekstpassages, of volledige inhoud",
+        "note": "⚠️ Context window bewust! Beperk queries tot 5-8 resultaten max",
+    },
 }
 
 # Citation parsing patterns
@@ -33,35 +60,18 @@ CITATION_SOURCE_PREFIX = "SOURCE:"
 # Invalid date values for citation processing
 INVALID_DATE_VALUES = {"N/A", "Invalid Date", "", "null", "None"}
 
-# Completion signals for task completion detection
+# Completion signals that agents should use
 COMPLETION_SIGNALS = [
-    "✅ TAAK VOLTOOID",
-    "✅ PARLEMENTAIRE DATA COMPLEET",
-    "✅ INFORMATIE BESCHIKBAAR",
     "✅ DATABASE GERAADPLEEGD",
-    "✅ ANTWOORD GEGEVEN",
-    # Person Agent signals
-    "✅ PERSONEN DATA COMPLEET",
-    "✅ LIDMAATSCHAP GEGEVENS BESCHIKBAAR",
-    "✅ TRANSPARANTIE DATA VERZAMELD",
-    # Document Agent signals
+    "✅ BRONNEN VERMELD",  # Added this as first priority
+    "✅ CITATIONS TOEGEVOEGD",  # Added this as mandatory
     "✅ DOCUMENTEN DATA COMPLEET",
-    "✅ WETGEVING OVERZICHT BESCHIKBAAR",
-    "✅ DOSSIER INFORMATIE VERZAMELD",
-    "✅ DOCUMENT ANTWOORD GEGEVEN",
-    # Voting Agent signals
+    "✅ PERSONEN DATA COMPLEET",
     "✅ STEMMINGS DATA GEZOCHT",
-    "✅ FRACTIE STEMGEDRAG GEANALYSEERD",
-    "✅ VOOR/TEGEN VERDELING BEREKEND",
-    "✅ STEMMING ANTWOORD GEGEVEN",
-    "✅ STEMMINGS DATA COMPLEET",
-    "✅ BESLUIT INFORMATIE BESCHIKBAAR",
-    "✅ VERGADERING GEGEVENS VERZAMELD",
-    # Case Agent signals
     "✅ ZAAK DATA COMPLEET",
-    "✅ ACTIVITEIT INFORMATIE BESCHIKBAAR",
-    "✅ PROCEDURE OVERZICHT VERZAMELD",
-    "✅ TOEZEGGING GEGEVENS OPGEHAALD",
+    "✅ ANTWOORD GEGEVEN",
+    "✅ DOCUMENT ANTWOORD GEGEVEN",
+    "✅ STEMMING ANTWOORD GEGEVEN",
 ]
 
 # Loop detection patterns
@@ -83,6 +93,7 @@ class StreamEvents:
     AGENT_TOOL_RESULT = "agent_tool_result"
     THOUGHT = "thought"
     CITATIONS_FOUND = "citations_found"
+    CITATION_WARNINGS = "citation_warnings"
     LOOP_DETECTED = "loop_detected"
     SYSTEM = "system"
     TOKEN = "token"

@@ -4,7 +4,9 @@ import asyncio
 import json
 import logging
 import re
-from typing import Awaitable, Callable, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from semantic_kernel.contents import ChatMessageContent, TextContent
 from semantic_kernel.contents.function_call_content import FunctionCallContent
@@ -26,6 +28,179 @@ from skills.committee_mapping_skill.committee_mapping import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ToolCallRecord:
+    """Record of a tool call and its results."""
+
+    agent: str
+    tool_name: str
+    arguments: Dict[str, Any]
+    result: Any
+    timestamp: datetime
+    result_ids: Set[str] = field(default_factory=set)
+
+    def __post_init__(self):
+        """Extract identifiers from tool results."""
+        self.result_ids = self._extract_result_ids()
+
+    def _extract_result_ids(self) -> Set[str]:
+        """Extract all identifiers from tool call results."""
+        ids = set()
+
+        if isinstance(self.result, list):
+            for item in self.result:
+                if isinstance(item, dict):
+                    # Extract common ID fields
+                    for id_field in [
+                        "id",
+                        "uuid",
+                        "nummer",
+                        "document_id",
+                        "agendapunt_id",
+                    ]:
+                        if id_field in item and item[id_field]:
+                            ids.add(str(item[id_field]))
+
+        elif isinstance(self.result, dict):
+            for id_field in ["id", "uuid", "nummer", "document_id", "agendapunt_id"]:
+                if id_field in self.result and self.result[id_field]:
+                    ids.add(str(self.result[id_field]))
+
+        # Also extract from string representation (for SQL query results)
+        elif isinstance(self.result, str):
+            ids.update(self._extract_ids_from_string(self.result))
+
+        return ids
+
+    def _extract_ids_from_string(self, result: str) -> Set[str]:
+        """Extract IDs from database query string results for citation verification."""
+        ids = set()
+
+        # Pattern 1: UUID format (most common in full results)
+        uuid_pattern = (
+            r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+        )
+        ids.update(re.findall(uuid_pattern, result, re.IGNORECASE))
+
+        # Pattern 2: Document/Case numbers (2025D27695, 2025Z12196, etc.)
+        nummer_pattern = r"\b20\d{2}[DZ]\d{4,6}\b"
+        ids.update(re.findall(nummer_pattern, result))
+
+        # Pattern 3: Activity numbers (2025A04767, etc.)
+        activity_pattern = r"\b20\d{2}A\d{4,6}\b"
+        ids.update(re.findall(activity_pattern, result))
+
+        # Pattern 4: Agendapunt IDs or other specific patterns
+        # Look for terms that could be matched in citations
+        onderwerp_pattern = r'"([^"]*jeugdzorg[^"]*)"'
+        onderwerpen = re.findall(onderwerp_pattern, result, re.IGNORECASE)
+        for onderwerp in onderwerpen:
+            # Use onderwerp as pseudo-ID for matching
+            ids.add(f"onderwerp:{onderwerp}")
+
+        logger.debug(
+            f"Extracted {len(ids)} IDs from string result: {list(ids)[:3]}..."
+        )  # Show first 3
+        return ids
+
+
+@dataclass
+class CitationVerifier:
+    """Verifies citations against actual tool call results."""
+
+    tool_calls: List[ToolCallRecord] = field(default_factory=list)
+
+    def add_tool_call(self, agent: str, tool_name: str, arguments: Dict, result: Any):
+        """Record a tool call result."""
+        record = ToolCallRecord(
+            agent=agent,
+            tool_name=tool_name,
+            arguments=arguments,
+            result=result,
+            timestamp=datetime.now(),
+        )
+        self.tool_calls.append(record)
+        logger.debug(
+            f"Recorded tool call: {tool_name} -> {len(record.result_ids)} result IDs"
+        )
+
+    def verify_citations(
+        self, citations: List[Dict[str, str]], agent: str
+    ) -> tuple[List[Dict[str, str]], List[str]]:
+        """
+        Verify citations against tool call results.
+
+        Returns:
+            Tuple of (verified_citations, warnings)
+        """
+        verified_citations = []
+        warnings = []
+
+        # Get all result IDs from this agent's tool calls
+        agent_result_ids = set()
+        for call in self.tool_calls:
+            if call.agent == agent:
+                agent_result_ids.update(call.result_ids)
+
+        for citation in citations:
+            citation_id = self._extract_citation_id(citation)
+
+            if citation_id and citation_id in agent_result_ids:
+                # Valid citation - came from tool results
+                citation["verified"] = True
+                verified_citations.append(citation)
+            else:
+                # Invalid or unverifiable citation
+                if citation_id:
+                    warnings.append(
+                        f"Citation ID '{citation_id}' not found in tool results"
+                    )
+                else:
+                    warnings.append(f"Citation missing valid ID: {citation}")
+
+                # Mark as unverified but keep with warning
+                citation["verified"] = False
+                citation["warning"] = "Not verified against tool results"
+                verified_citations.append(citation)
+
+        logger.info(
+            f"Citation verification for {agent}: {len(verified_citations)} total, "
+            f"{sum(1 for c in verified_citations if c.get('verified'))} verified, "
+            f"{len(warnings)} warnings"
+        )
+
+        return verified_citations, warnings
+
+    def _extract_citation_id(self, citation: Dict[str, str]) -> Optional[str]:
+        """Extract primary identifier from citation."""
+        for id_field in ["id", "document_id", "agendapunt_id", "uuid"]:
+            if id_field in citation and citation[id_field]:
+                return str(citation[id_field])
+        return None
+
+    def get_verification_stats(self) -> Dict[str, Any]:
+        """Get statistics about tool calls and citations."""
+        total_calls = len(self.tool_calls)
+        total_result_ids = sum(len(call.result_ids) for call in self.tool_calls)
+
+        agents = {}
+        for call in self.tool_calls:
+            if call.agent not in agents:
+                agents[call.agent] = {"tool_calls": 0, "result_ids": 0}
+            agents[call.agent]["tool_calls"] += 1
+            agents[call.agent]["result_ids"] += len(call.result_ids)
+
+        return {
+            "total_tool_calls": total_calls,
+            "total_result_ids": total_result_ids,
+            "agents": agents,
+        }
+
+
+# Global citation verifier instance
+_citation_verifier = CitationVerifier()
 
 
 def agent_response_callback(message: ChatMessageContent) -> None:
@@ -195,16 +370,16 @@ def _parse_citation_line(line: str) -> Optional[Dict[str, str]]:
 
 def _extract_citations(
     text_content: str, agent_name: str
-) -> tuple[str, List[Dict[str, str]]]:
+) -> tuple[str, List[Dict[str, str]], List[str]]:
     """
-    Extract citations from agent response text.
+    Extract and verify citations from agent response text.
 
     Args:
         text_content: The agent's response text
         agent_name: Name of the agent for logging
 
     Returns:
-        Tuple of (processed_text, parsed_citations)
+        Tuple of (processed_text, verified_citations, warnings)
     """
     logger.info(f"Processing message from {agent_name} for citations")
 
@@ -214,7 +389,7 @@ def _extract_citations(
 
     if not citation_block_match:
         logger.debug(f"No citation block found in {agent_name} response")
-        return text_content, []
+        return text_content, [], []
 
     # Remove citation block from text
     processed_text = (
@@ -232,8 +407,17 @@ def _extract_citations(
             if citation:
                 parsed_citations.append(citation)
 
-    logger.info(f"Extracted {len(parsed_citations)} citations from {agent_name}")
-    return processed_text, parsed_citations
+    # Verify citations against tool call results
+    verified_citations, warnings = _citation_verifier.verify_citations(
+        parsed_citations, agent_name
+    )
+
+    logger.info(
+        f"Extracted {len(parsed_citations)} citations from {agent_name}, "
+        f"{len(verified_citations)} verified, {len(warnings)} warnings"
+    )
+
+    return processed_text, verified_citations, warnings
 
 
 async def _emit_event(queue: asyncio.Queue, event_data: Dict) -> None:
@@ -303,6 +487,14 @@ def make_streaming_callback(
                         )
 
                     elif isinstance(item, FunctionResultContent):
+                        # Record tool call result for citation verification
+                        _citation_verifier.add_tool_call(
+                            agent=agent_name,
+                            tool_name=item.name,
+                            arguments={},  # Arguments not available in result content
+                            result=item.result,
+                        )
+
                         tool_description = _get_tool_description(item.name)
                         asyncio.create_task(
                             _emit_event(
@@ -332,7 +524,27 @@ def make_streaming_callback(
                     )
                 )
 
-                processed_text, citations = _extract_citations(text_content, agent_name)
+                processed_text, citations, warnings = _extract_citations(
+                    text_content, agent_name
+                )
+
+                # Check citation compliance
+                citation_compliance_warnings = _check_citation_compliance(
+                    text_content, agent_name, has_tool_calls
+                )
+
+                if citation_compliance_warnings:
+                    asyncio.create_task(
+                        _emit_event(
+                            queue,
+                            {
+                                "event": StreamEvents.CITATION_WARNINGS,
+                                "agent": agent_name,
+                                "warnings": citation_compliance_warnings,
+                                "message": f"⚠️ Citation compliance issues: {len(citation_compliance_warnings)} warnings",
+                            },
+                        )
+                    )
 
                 if citations:
                     asyncio.create_task(
@@ -342,18 +554,38 @@ def make_streaming_callback(
                                 "event": StreamEvents.CITATIONS_FOUND,
                                 "agent": agent_name,
                                 "citations": citations,
+                                "warnings": warnings,
                             },
                         )
                     )
 
-                    # Emit citation processing completion
+                    # Emit citation processing completion with verification stats
+                    verified_count = sum(
+                        1 for c in citations if c.get("verified", True)
+                    )
+                    total_count = len(citations)
+
+                    if warnings:
+                        # Emit citation warnings
+                        asyncio.create_task(
+                            _emit_event(
+                                queue,
+                                {
+                                    "event": StreamEvents.CITATION_WARNINGS,
+                                    "agent": agent_name,
+                                    "warnings": warnings,
+                                    "message": f"⚠️ {len(warnings)} citation verification warnings",
+                                },
+                            )
+                        )
+
                     asyncio.create_task(
                         _emit_event(
                             queue,
                             {
                                 "event": StreamEvents.SYSTEM,
                                 "step": SystemSteps.CITATION_PROCESSING_DONE,
-                                "message": f"Bronvermeldingen verwerkt ({len(citations)} bronnen gevonden)",
+                                "message": f"Bronvermeldingen verwerkt ({verified_count}/{total_count} geverifieerd)",
                             },
                         )
                     )
@@ -465,19 +697,66 @@ async def tool_call_debug_handler(message: ChatMessageContent) -> None:
 
 
 def _check_completion_signal(text: str) -> Optional[str]:
-    """
-    Check if text contains any completion signal.
-
-    Args:
-        text: Text to check for completion signals
-
-    Returns:
-        Found completion signal or None
-    """
+    """Check if text contains a completion signal."""
     for signal in COMPLETION_SIGNALS:
         if signal in text:
             return signal
     return None
+
+
+def _check_citation_compliance(
+    text: str, agent_name: str, has_tool_calls: bool
+) -> List[str]:
+    """
+    Check if agent response complies with citation requirements.
+
+    Returns list of compliance warnings.
+    """
+    warnings = []
+
+    # Check for citation block
+    has_citation_block = CITATION_START_MARKER in text and CITATION_END_MARKER in text
+
+    # Check for completion signals that indicate citations should be present
+    has_completion_signals = any(signal in text for signal in COMPLETION_SIGNALS)
+
+    if not has_citation_block:
+        if has_tool_calls:
+            warnings.append(
+                f"{agent_name}: VERPLICHTE CITATIONS ONTBREKEN - Agent heeft database queries uitgevoerd maar geen bronvermelding toegevoegd!"
+            )
+        elif has_completion_signals:
+            warnings.append(
+                f"{agent_name}: VERPLICHTE CITATIONS ONTBREKEN - Agent gebruikt completion signals maar heeft geen bronvermelding!"
+            )
+        elif len(text.strip()) > 100:  # Substantial response
+            warnings.append(
+                f"{agent_name}: BRONVERMELDING VERWACHT - Uitgebreid antwoord zonder citations!"
+            )
+
+    # Check citation quality if block exists
+    if has_citation_block:
+        citation_content = re.search(
+            f"{CITATION_START_MARKER}(.*?){CITATION_END_MARKER}", text, re.DOTALL
+        )
+        if citation_content:
+            citations_text = citation_content.group(1).strip()
+            citation_lines = [
+                line
+                for line in citations_text.split("\n")
+                if line.startswith(CITATION_SOURCE_PREFIX)
+            ]
+
+            if len(citation_lines) == 0:
+                warnings.append(
+                    f"{agent_name}: LEGE CITATIONS BLOCK - Citations block aanwezig maar geen SOURCE entries!"
+                )
+            elif has_tool_calls and len(citation_lines) < 1:
+                warnings.append(
+                    f"{agent_name}: MINIMALE CITATIONS - Verwacht meer bronvermeldingen bij database queries!"
+                )
+
+    return warnings
 
 
 def _check_loop_indicators(text: str) -> List[str]:
@@ -498,3 +777,20 @@ def _check_loop_indicators(text: str) -> List[str]:
             found_indicators.append(indicator)
 
     return found_indicators
+
+
+def get_citation_verification_stats() -> Dict[str, Any]:
+    """
+    Get citation verification statistics.
+
+    Returns:
+        Dictionary with verification statistics
+    """
+    return _citation_verifier.get_verification_stats()
+
+
+def reset_citation_verifier():
+    """Reset the citation verifier for a new conversation."""
+    global _citation_verifier
+    _citation_verifier = CitationVerifier()
+    logger.info("Citation verifier reset for new conversation")

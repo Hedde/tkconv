@@ -56,26 +56,74 @@ CORE TABELLEN EN JUISTE RELATIES:
 
 ⚠️ BELANGRIJK: Gebruik AGENDAPUNT.onderwerp, NIET Document.onderwerp!
 
-STEMMING ZOEKSTRATEGIE:
-1. **Fractie + onderwerp zoeken** (CORRECTE query structuur):
-   query(sql="SELECT a.onderwerp, s.soort, COUNT(*) as aantal FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE s.actorFractie = ? AND a.onderwerp LIKE ? GROUP BY a.onderwerp, s.soort ORDER BY a.onderwerp", values='["PVV", "%veehouderij%"]')
+🎯 OPTIMIZED STEMMING ZOEKSTRATEGIE:
 
-2. **Alle fracties voor onderwerp**:
-   query(sql="SELECT a.onderwerp, s.actorFractie, s.soort, COUNT(*) as aantal FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE a.onderwerp LIKE ? GROUP BY a.onderwerp, s.actorFractie, s.soort ORDER BY s.actorFractie", values='["%dierenwelzijn%"]')
+**STAP 1 - ONDERWERP VERIFICATIE (ALTIJD EERST):**
+```sql
+-- Check welke onderwerpen beschikbaar zijn (max 8 resultaten)
+SELECT DISTINCT a.onderwerp 
+FROM Agendapunt a 
+JOIN Besluit b ON a.id = b.agendapuntId 
+JOIN Stemming s ON b.id = s.besluitId 
+WHERE a.onderwerp LIKE '%dieren%' 
+LIMIT 8
+```
 
-3. **Breed zoeken met meerdere termen**:
-   query(sql="SELECT a.onderwerp, s.actorFractie, s.soort, COUNT(*) as aantal FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE (a.onderwerp LIKE ? OR a.onderwerp LIKE ?) GROUP BY a.onderwerp, s.actorFractie, s.soort ORDER BY a.onderwerp", values='["%asiel%", "%migratie%"]')
+**STAP 2 - FRACTIE STEMGEDRAG PER ONDERWERP:**
+```sql
+-- Specifieke fractie + onderwerp (EFFICIENT)
+SELECT a.onderwerp, s.soort, COUNT(*) as aantal 
+FROM Agendapunt a 
+JOIN Besluit b ON a.id = b.agendapuntId 
+JOIN Stemming s ON b.id = s.besluitId 
+WHERE s.actorFractie = ? AND a.onderwerp LIKE ? 
+GROUP BY a.onderwerp, s.soort 
+ORDER BY a.onderwerp 
+LIMIT 6
+```
 
-4. **Bestaande onderwerpen checken**:
-   query(sql="SELECT DISTINCT a.onderwerp FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE a.onderwerp LIKE ? LIMIT 10", values='["%klimaat%"]')
+**STAP 3 - ALLE FRACTIES OVERZICHT (INDIEN GEVRAAGD):**
+```sql
+-- Alle fracties voor 1 onderwerp (max 15 resultaten)
+SELECT s.actorFractie, s.soort, COUNT(*) as aantal 
+FROM Agendapunt a 
+JOIN Besluit b ON a.id = b.agendapuntId 
+JOIN Stemming s ON b.id = s.besluitId 
+WHERE a.onderwerp LIKE ? 
+GROUP BY s.actorFractie, s.soort 
+ORDER BY s.actorFractie 
+LIMIT 15
+```
 
-WERKENDE ONDERWERP TERMEN:
+WERKENDE ONDERWERP TERMEN (GETEST):
+- Jeugdzorg: "%jeugdzorg%", "%jeugd%", "%jeugdhulp%", "%JeugdzorgPlus%"
 - Veehouderij: "%veehouderij%", "%dieren%", "%dierenwelzijn%"
 - Migratie: "%asiel%", "%migratie%", "%vreemdelingen%"  
 - Zorg: "%zorg%", "%ouderen%", "%Co-Med%"
 - Wonen: "%woning%", "%woningbouw%"
 - Belasting: "%belasting%", "%Belastingplan%"
 - Energie: "%energie%", "%netcongestie%"
+
+**JEUGDZORG SPECIFIEKE STRATEGIE:**
+Voor jeugdzorg vragen, zoek specifiek naar:
+- Moties over jeugdzorg bezuinigingen 
+- Stemming over "Wet verbetering beschikbaarheid jeugdzorg"
+- Amendementen over jeugdzorg budgetten
+- Besluitvorming over staatscommissie jeugdzorg
+
+QUERY VOORBEELDEN (GEOPTIMALISEERD):
+
+1. **Onderwerpen checken** (ALTIJD EERST):
+   query(sql="SELECT DISTINCT a.onderwerp FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE a.onderwerp LIKE ? LIMIT 8", values='["%klimaat%"]')
+
+2. **PVV veehouderij stemming**: 
+   query(sql="SELECT a.onderwerp, s.soort, COUNT(*) as aantal FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE s.actorFractie = ? AND a.onderwerp LIKE ? GROUP BY a.onderwerp, s.soort ORDER BY a.onderwerp LIMIT 6", values='["PVV", "%veehouderij%"]')
+
+3. **Alle fracties asielbeleid**:
+   query(sql="SELECT s.actorFractie, s.soort, COUNT(*) as aantal FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE a.onderwerp LIKE ? GROUP BY s.actorFractie, s.soort ORDER BY s.actorFractie LIMIT 15", values='["%asiel%"]')
+
+4. **Multiple termen zoeken**:
+   query(sql="SELECT DISTINCT a.onderwerp FROM Agendapunt a JOIN Besluit b ON a.id = b.agendapuntId JOIN Stemming s ON b.id = s.besluitId WHERE (a.onderwerp LIKE ? OR a.onderwerp LIKE ?) LIMIT 10", values='["%energie%", "%klimaat%"]')
 
 CROSS-AGENT SAMENWERKING:
 Als GEEN stemmingsdata gevonden:
@@ -103,12 +151,14 @@ ALTIJD VERMELDEN als geen data:
 - Het onderwerp is behandeld als debat/discussie zonder stemming
 Raadpleeg DocumentAgent voor gerelateerde documenten en standpunten."
 
-COMPLETION SIGNALS (verplicht):
-✅ STEMMINGS DATA GEZOCHT
-✅ FRACTIE STEMGEDRAG GEANALYSEERD  
-✅ VOOR/TEGEN VERDELING BEREKEND
+COMPLETION SIGNALS (verplicht IN DEZE VOLGORDE):
 ✅ DATABASE GERAADPLEEGD
+✅ BRONNEN VERMELD
+✅ CITATIONS TOEGEVOEGD
+✅ STEMMINGS DATA GEZOCHT
 ✅ STEMMING ANTWOORD GEGEVEN
+
+⚠️ CITATIONS ZIJN VERPLICHT: Response is NIET compleet zonder bronvermelding!
 
 """
         + CITATION_INSTRUCTIONS
@@ -134,7 +184,12 @@ VOTING CITATION REGELS:
     fc_behavior = FunctionChoiceBehavior.Auto(
         filters={"included_plugins": ["SQLiteMCPClient"]}, max_auto_invoke_attempts=1
     )
-    settings = OpenAIChatPromptExecutionSettings(function_choice_behavior=fc_behavior)
+    settings = OpenAIChatPromptExecutionSettings(
+        function_choice_behavior=fc_behavior,
+        temperature=0.3,  # Balanced: natural language flow while preserving facts
+        max_tokens=2500,  # Enough tokens for detailed, well-structured responses
+        top_p=0.95,  # Allow some linguistic creativity for readability
+    )
     default_args = KernelArguments(
         settings=settings, current_date=datetime.now().strftime("%Y-%m-%d")
     )

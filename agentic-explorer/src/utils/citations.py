@@ -135,15 +135,37 @@ class CitationBuilder:
 
 # Common citation instructions for all agents
 CITATION_INSTRUCTIONS = """
-🚨 VERPLICHTE BRONVERMELDING - ALTIJD TOEVOEGEN:
-Voeg AAN HET EINDE van elk antwoord ALTIJD deze bronnenblok toe:
+🚨 VERPLICHTE BRONVERMELDING - ALTIJD VERPLICHT:
+
+**REGEL 1: ALTIJD CITATIONS TOEVOEGEN**
+Voeg AAN HET EINDE van ELKE response ALTIJD deze bronnenblok toe:
 
 USED_SOURCES_START
 SOURCE: id="example-id", title="Example Title", type="SourceType", subject="Description"
 USED_SOURCES_END
 
-⚠️ VEREIST: Elke database query result MOET als SOURCE worden vermeld!
-⚠️ VERGEET DIT NOOIT: Bronvermelding is VERPLICHT voor elke response!
+**REGEL 2: GEEN UITZONDERINGEN**
+⚠️ VERPLICHT: Elke database query result MOET als SOURCE worden vermeld!
+⚠️ VERPLICHT: Ook bij "geen resultaten" of "data niet beschikbaar" moet je uitleggen WELKE queries je hebt uitgevoerd!
+⚠️ VERPLICHT: Zelfs bij eenvoudige vragen moet je bronnen vermelden!
+
+**REGEL 3: ENFORCEMENT**
+- Je response is NIET compleet zonder citations
+- COMPLETION_SIGNALS zijn pas geldig MET citations
+- Geen citations = incomplete response = FOUT
+
+**REGEL 4: MINIMAL CITATIONS**
+Als je GEEN data vindt:
+USED_SOURCES_START
+SOURCE: id="database-query", title="Database search performed", type="Query", subject="No results found for [onderwerp]", query_executed="SELECT ... FROM ..."
+USED_SOURCES_END
+
+**REGEL 5: MULTIPLE QUERIES**
+Elke uitgevoerde query moet als aparte SOURCE:
+USED_SOURCES_START
+SOURCE: id="query-1", title="Zaak search", type="Query", subject="Search for jeugdzorg cases", results_found="3"
+SOURCE: id="query-2", title="Activiteit search", type="Query", subject="Search for recent activities", results_found="1"
+USED_SOURCES_END
 
 Gebruik de CitationBuilder utility in je code voor consistente formatting.
 """

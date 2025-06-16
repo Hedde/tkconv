@@ -10,7 +10,7 @@ services:
         /mounted-scripts/tksync-skiptoken.sh &
         SYNC_PID=$$!
         
-        # Function to sync database files to mounted directory
+        # Function to sync database files and docs to mounted directory
         sync_databases() {
           if [ -f "/app/tk.sqlite3" ]; then
             echo "Syncing database files to mounted directory..."
@@ -18,6 +18,14 @@ services:
             cp /app/*.sqlite3-shm /app/db-export/ 2>/dev/null || true  
             cp /app/*.sqlite3-wal /app/db-export/ 2>/dev/null || true
             echo "Database files synced to /app/db-export/"
+            
+            # Sync docs directory if it exists
+            if [ -d "/app/docs" ]; then
+              echo "Syncing docs directory to mounted directory..."
+              mkdir -p /app/docs-export
+              rsync -av --delete /app/docs/ /app/docs-export/ 2>/dev/null || cp -r /app/docs/* /app/docs-export/ 2>/dev/null || true
+              echo "Docs directory synced to /app/docs-export/"
+            fi
           fi
         }
         
@@ -38,8 +46,11 @@ services:
       - data-minimal:/app
       - ./docker:/mounted-scripts:ro
       - ./data:/app/db-export:rw
+      - ./data/docs:/app/docs-export:rw
     environment:
       - MINIMAL_MODE=true
+      - DOC_SYNC_DAYS=7
+      - DOC_MAX_SIZE_MB=50
     healthcheck:
       test: ["CMD", "sh", "-c", "test -f /app/tk.sqlite3 || pgrep -f 'tksync-skiptoken.sh' >/dev/null"]
       interval: 30s

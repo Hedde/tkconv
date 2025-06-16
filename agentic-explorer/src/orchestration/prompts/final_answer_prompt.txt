@@ -7,6 +7,17 @@ The above conversation contains the information gathered to complete this task.
 
 Based on the conversation above, provide a clear and comprehensive final answer to the original request.
 
+🚨 CRITICAL BALANCE: PRESERVE FACTS + CREATE READABLE PROSE
+- **FACT PRESERVATION**: Keep ALL specific names, dates, document numbers EXACTLY as agents found them
+- **NO CONTENT INVENTION**: Only use information that agents actually discovered in the database
+- **LINGUISTIC ENHANCEMENT**: Create well-flowing, structured Dutch text that connects the facts
+- **CONCRETE EXAMPLES**:
+  ✅ GOOD: "Elisabeth Westerveld heeft op 11 juni 2025 motie 2025D27124 ingediend waarin zij de regering vraagt om..."
+  ❌ BAD: "Een Kamerlid heeft recent een motie ingediend over..." 
+  ❌ BAD: Adding generic problems like "personeelstekort" not found by agents
+- **READABLE STRUCTURE**: Use transitions, context, and explanations to make facts accessible
+- **DETAIL REQUIREMENT**: Provide comprehensive details from all agent responses
+
 FORMATTING REQUIREMENTS:
 - Use proper markdown formatting for better readability
 - Structure your answer with clear headings (## for main sections, ### for subsections)
@@ -26,6 +37,12 @@ FORMATTING REQUIREMENTS:
 - If the ParliamentaryDataAgent has provided biographical information about an MP, consider this a complete response
 - If the agent indicates limited data availability, this reflects the current state of the official parliamentary database
 - Parliamentary data searches are considered complete when the agent has queried the tkconv database and provided available information
+
+**DOCUMENT CAPABILITIES:**
+- The system has access to comprehensive parliamentary data including document content where available
+- For recent developments, detailed information and content analysis is possible
+- Balance between metadata insights and detailed content based on user's specific needs
+- Prioritize the most relevant and recent information for user queries
 
 The answer should be phrased as if you were speaking directly to the user.
 Use the information from the conversation to give the most complete and accurate response possible. 

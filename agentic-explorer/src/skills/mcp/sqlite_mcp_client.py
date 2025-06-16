@@ -634,23 +634,167 @@ class SQLiteMCPClient:
         limit: Annotated[int, "Maximum results"] = DEFAULT_DOCUMENT_SEARCH_LIMIT,
         arguments: Optional[KernelArguments] = None,
     ) -> List[Dict[str, Any]]:
-        """Search parliamentary documents with multiple criteria."""
+        """
+        Search parliamentary documents with multiple filter options.
+
+        Args:
+            search_term: Search term for titles and subjects
+            document_type: Filter by document type (e.g., "Brief regering")
+            date_from: Earliest document date
+            date_to: Latest document date
+            limit: Maximum number of results
+
+        Returns:
+            List of matching documents with metadata
+        """
+        sql, values = self._build_search_sql(
+            search_term, document_type, date_from, date_to, limit
+        )
+
         try:
-            # Convert empty strings to None for proper query building
-            search_term = search_term.strip() if search_term else None
-            document_type = document_type.strip() if document_type else None
-            date_from = date_from.strip() if date_from else None
-            date_to = date_to.strip() if date_to else None
-
-            sql, params = self._build_search_sql(
-                search_term, document_type, date_from, date_to, int(limit)
-            )
-
-            # Convert params list to JSON string for query function
-            result = await self.query(sql, json.dumps(params) if params else "")
-            self._log_search_results("search_documents", result, "Document")
+            result = await self._call_tool("query", sql=sql, values=values)
+            self._log_search_results("search_documents", result)
             return result
 
         except Exception as e:
-            self._log.error(f"{LOG_PREFIX_INFO} Document search failed: {e}")
+            self._log.error(f"Document search failed: {e}")
             return []
+
+    @kernel_function(
+        name="search_full_text",
+        description="Full-text search in document content using tkindex database (USE SPARINGLY - context window intensive!)",
+    )
+    async def search_full_text(
+        self,
+        search_query: Annotated[
+            str, "FTS5 search query (e.g., 'jeugdzorg AND problemen')"
+        ],
+        max_results: Annotated[int, "Maximum results (recommended: 5-8)"] = 5,
+        snippet_size: Annotated[int, "Snippet context size (recommended: 10-15)"] = 12,
+        arguments: Optional[KernelArguments] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search full document content using FTS5 full-text search.
+
+        ⚠️ WARNING: This function queries volledige document content and can overwhelm context windows!
+        Use only when specific citations or exact text passages are needed.
+
+        Args:
+            search_query: FTS5 search query with boolean operators
+            max_results: Maximum results (keep low!)
+            snippet_size: Context words around matches
+
+        Returns:
+            List of documents with content snippets
+        """
+        # Use tkindex database path instead of main database
+        tkindex_path = self.db_path.replace("tk.sqlite3", "tkindex-minimal.sqlite3")
+
+        if not Path(tkindex_path).exists():
+            self._log.warning(f"Full-text database not found: {tkindex_path}")
+            return []
+
+        # Build FTS5 query with snippet extraction
+        sql = f"""
+        SELECT 
+            uuid, 
+            titel, 
+            datum,
+            snippet(docsearch, 2, '<mark>', '</mark>', '...', ?) as snippet
+        FROM docsearch 
+        WHERE docsearch MATCH ? 
+        ORDER BY datum DESC 
+        LIMIT ?
+        """
+
+        values = [str(snippet_size), search_query, str(max_results)]
+
+        try:
+            # Temporarily change database path for this query
+            original_path = self.db_path
+            self.db_path = tkindex_path
+
+            result = await self._call_tool("query", sql=sql, values=values)
+            self._log.info(
+                f"{LOG_PREFIX_INFO} Full-text search returned {len(result) if result else 0} results"
+            )
+
+            # Restore original database path
+            self.db_path = original_path
+
+            return result or []
+
+        except Exception as e:
+            self._log.error(f"Full-text search failed: {e}")
+            # Restore original database path on error
+            self.db_path = original_path
+            return []
+
+    @kernel_function(
+        name="get_document_content",
+        description="Get specific document content by UUID (USE VERY SPARINGLY - high context cost!)",
+    )
+    async def get_document_content(
+        self,
+        document_uuid: Annotated[str, "Document UUID"],
+        max_chars: Annotated[int, "Maximum characters to return"] = 500,
+        arguments: Optional[KernelArguments] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve specific document content by UUID.
+
+        ⚠️ WARNING: Returns volledige document content - use only when absolutely necessary!
+
+        Args:
+            document_uuid: Unique document identifier
+            max_chars: Maximum characters to return (recommended: 500-1000)
+
+        Returns:
+            Document with limited content
+        """
+        # Use tkindex database path
+        tkindex_path = self.db_path.replace("tk.sqlite3", "tkindex-minimal.sqlite3")
+
+        if not Path(tkindex_path).exists():
+            self._log.warning(f"Full-text database not found: {tkindex_path}")
+            return {}
+
+        sql = """
+        SELECT 
+            uuid,
+            titel, 
+            datum,
+            onderwerp,
+            substr(tekst, 1, ?) as tekst_excerpt
+        FROM docsearch 
+        WHERE uuid = ?
+        """
+
+        values = [str(max_chars), document_uuid]
+
+        try:
+            # Temporarily change database path for this query
+            original_path = self.db_path
+            self.db_path = tkindex_path
+
+            result = await self._call_tool("query", sql=sql, values=values)
+
+            # Restore original database path
+            self.db_path = original_path
+
+            if result:
+                self._log.info(
+                    f"{LOG_PREFIX_INFO} Retrieved content for document {document_uuid}"
+                )
+                return result[0]
+            else:
+                self._log.warning(
+                    f"{LOG_PREFIX_INFO} No content found for document {document_uuid}"
+                )
+                return {}
+
+        except Exception as e:
+            self._log.error(f"Document content retrieval failed: {e}")
+            # Restore original database path on error
+            self.db_path = original_path
+            return {}

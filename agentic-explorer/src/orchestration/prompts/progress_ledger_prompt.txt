@@ -45,47 +45,84 @@ LOOP INDICATORS - Mark as LOOP if:
 
 **🎯 AGENT SELECTION RULES:**
 
-**VOTING QUESTIONS → VotingAgent:**
-- Any question containing "gestemd", "stemming", "stemmen", "stemgedrag"
-- "Hoe heeft [fractie/partij] gestemd over..."
-- "Voor/Tegen", "aangenomen", "verworpen"
-- "Stemmingsresultaat", "stemuitslag"
-- Questions about fractie/party voting behavior
+**COMPLEX TOPICS REQUIRING MULTIPLE AGENTS:**
+- **Jeugdzorg/Youth Care**: DocumentAgent + VotingAgent + CaseAgent + PersonAgent (ALL 4 AGENTS REQUIRED)
+- **Climate/Klimaat**: DocumentAgent + VotingAgent (policy + voting patterns)
+- **Healthcare/Zorg**: DocumentAgent + VotingAgent + PersonAgent (policy + decisions + key players)
+- **Budget/Begroting**: DocumentAgent + VotingAgent (financial docs + voting)
+- **Education/Onderwijs**: DocumentAgent + VotingAgent + CaseAgent (laws + votes + procedures)
 
-**DOCUMENT QUESTIONS → DocumentAgent:**
-- Document content, motie text, brief regering content
-- "Wat staat er in document/motie/brief..."
-- Wetgeving details, parliamentary procedures
+**🎯 JEUGDZORG KWALITEITSSTANDAARD - COMPREHENSIEVE COVERAGE:**
+Voor vragen over "jeugdzorg", "youth care", of "wat doet de Kamer" betreffende kinder/jeugd onderwerpen:
+- **Streef naar complete dekking**: Alle 4 agents leveren unieke perspectieven
+- **Aanbevolen volgorde**: DocumentAgent → VotingAgent → CaseAgent → PersonAgent
+- **Elke agent voegt waarde toe** met specifieke expertise voordat volgende spreekt
 
-**PERSON QUESTIONS → PersonAgent:**
-- MP/minister biographical information
-- "Wie is [naam]", "Welke functie heeft..."
-- Political career information
+**MULTI-AGENT TRIGGERS - Use ALL relevant agents for:**
+- Questions about "problemen en wat doet de Kamer" → DocumentAgent + VotingAgent + CaseAgent
+- Questions about policy + parliamentary actions → DocumentAgent + VotingAgent + PersonAgent
+- Questions requiring comprehensive overview → Use 2-3 most relevant agents
 
-**CASE/PROCEDURE QUESTIONS → CaseAgent:**
-- Parliamentary procedure status
-- Activity timelines, case progress
-- Commitments and activities
+**SINGLE AGENT QUESTIONS:**
+- **VOTING QUESTIONS → VotingAgent ONLY:**
+  - "Hoe heeft [fractie] gestemd over..."
+  - "Voor/Tegen", "aangenomen", "verworpen"
+  - Pure voting behavior questions
 
-**⚠️ CRITICAL: If question contains voting keywords (gestemd, stemming, Voor/Tegen), ALWAYS select VotingAgent first!**
+- **DOCUMENT QUESTIONS → DocumentAgent ONLY:**
+  - "Wat staat er in document/motie..."
+  - Specific document content requests
 
-**🚨 FORCE COMPLETION CONDITIONS:**
-Mark as SATISFIED if:
-- Agent provided completion signal (✅ symbol)
-- More than 4 rounds of same query attempts
-- Tool failures + fallback answer given
-- Agent gave any substantive answer about the requested topic
+- **PERSON QUESTIONS → PersonAgent ONLY:**
+  - "Wie is [naam]", "Welke functie heeft..."
+  - Pure biographical information
+
+- **CASE/PROCEDURE QUESTIONS → CaseAgent ONLY:**
+  - Parliamentary procedure status only
+  - Activity timelines only
+
+**⚠️ DEFAULT TO MULTIPLE AGENTS: If question is complex or asks "what problems + what does parliament do", use 2-3 relevant agents!**
+
+**✅ COMPLETION KADERS:**
+Overweeg SATISFIED wanneer:
+- Agent heeft completion signaal gegeven (✅ symbol)
+- Na meer dan 4 rounds van dezelfde query pogingen
+- Tool failures + substantieel fallback antwoord beschikbaar
+- Agent heeft nuttig antwoord gegeven over gevraagd onderwerp
+- **Voor jeugdzorg: streef naar input van alle 4 relevante agents voor optimale kwaliteit**
+
+**🔄 COMPLEXE ONDERWERPEN - OPTIMALE ORCHESTRATIE:**
+
+**VOOR JEUGDZORG VRAGEN SPECIFIEK:**
+1. **Start: DocumentAgent** (recente documenten, moties, regeringsbrieven over jeugdzorg)
+2. **Daarna: VotingAgent** (stemresultaten over jeugdzorg moties en voorstellen)  
+3. **Vervolgens: CaseAgent** (parlementaire activiteiten, procedures, commissiewerk jeugdzorg)
+4. **Tenslotte: PersonAgent** (belangrijke Kamerleden: Westerveld, Dobbe, Ceder, Bruyning, etc.)
+
+**KWALITEITSCHECK VOOR COMPLEXE ONDERWERPEN:**
+Voor optimaal jeugdzorg antwoord, streef naar:
+- ✅ DocumentAgent heeft recente documenten/moties geleverd
+- ✅ VotingAgent heeft stemdata/resultaten bijgedragen
+- ✅ CaseAgent heeft activiteiten/procedures toegevoegd  
+- ✅ PersonAgent heeft stakeholder informatie verstrekt
+- **Wanneer alle 4 perspectieven gedekt → Excellent coverage bereikt**
+
+**AGENT BIJDRAGE TRACKING:**
+Monitor welke agents hebben bijgedragen aan jeugdzorg onderwerpen:
+- Bij 1-2 agents gebruikt → Overweeg volgende relevante agent
+- Bij 3 agents gebruikt → Evalueer of finale perspectief waardevol is
+- Bij alle 4 agents gebruikt → Complete coverage bereikt
 
 To make progress on the request, please answer the following questions, including necessary reasoning:
 
-    - Is the request fully satisfied? (True if complete, especially if the ParliamentaryDataAgent has provided information about the requested politician/topic, OR if completion signal detected, OR if substantial attempt made with fallback, or False if the original request has yet to be SUCCESSFULLY and FULLY addressed)
+    - Is the request fully satisfied? (True if complete, especially if ALL necessary agents have contributed for complex topics, OR if completion signal detected, OR if substantial attempt made with fallback, or False if the original request has yet to be SUCCESSFULLY and FULLY addressed. **Voor jeugdzorg: streef naar alle 4 agent perspectieven voor optimale kwaliteit**)
     - Are we in a loop where we are repeating the same requests and / or getting the same responses as before?
       Loops can span multiple turns, and can include repeated actions like scrolling up or down more than a
       handful of times, OR repeated tool failures, OR same function calls with similar parameters.
     - Are we making forward progress? (True if just starting, or recent messages are adding value. False if recent
       messages show evidence of being stuck in a loop or if there is evidence of significant barriers to success
       such as the inability to read from a required file, OR repeated tool failures)
-    - Who should speak next? (select from: {{$names}})
+    - Who should speak next? (For complex topics like jeugdzorg, cycle through ALL relevant agents in order. For simple questions, select ONE agent from: {{$names}})
     - What instruction or question would you give this team member? (Phrase as if speaking directly to them, and
       include any specific information they may need)
 
