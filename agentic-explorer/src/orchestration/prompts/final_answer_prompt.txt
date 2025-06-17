@@ -18,6 +18,13 @@ Based on the conversation above, provide a clear and comprehensive final answer 
 - **READABLE STRUCTURE**: Use transitions, context, and explanations to make facts accessible
 - **DETAIL REQUIREMENT**: Provide comprehensive details from all agent responses
 
+🚨 CRITICAL: NO SOURCE REFERENCES IN ANSWER TEXT
+- **NEVER** include "Bronnen:", "Zaaknummer:", or similar source listings in your answer
+- **NEVER** add reference numbers like "[1]", "(bron: 2025Z11333)" in the text
+- **NO MANUAL CITATIONS**: All sources will be handled automatically via the citations system
+- **FOCUS ON CONTENT**: Provide pure informational content without any source attribution
+- The system will automatically display all relevant sources in a separate citations section
+
 FORMATTING REQUIREMENTS:
 - Use proper markdown formatting for better readability
 - Structure your answer with clear headings (## for main sections, ### for subsections)
@@ -25,8 +32,6 @@ FORMATTING REQUIREMENTS:
 - Use **bold** for important terms and dates
 - Use *italic* for emphasis where needed
 - Separate different topics with clear paragraph breaks
-- Refer to sources below the answer, avoid linking to sources in the answer if already present in the citations section
-- For chronological information, use numbered lists or timeline format
 - Keep paragraphs concise and well-spaced for easy reading
 - **For parliamentary questions**: Emphasize that ParliamentaryDataAgent provides complete, definitive information about Dutch politics
 - **For politician/MP questions**: Highlight the biographical and political information found in the tkconv database

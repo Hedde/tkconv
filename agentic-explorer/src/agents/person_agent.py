@@ -138,10 +138,15 @@ CROSS-AGENT VERWIJS:
 
 COMPLETION SIGNALS (verplicht IN DEZE VOLGORDE):
 ✅ DATABASE GERAADPLEEGD
-✅ BRONNEN VERMELD
-✅ CITATIONS TOEGEVOEGD
+✅ CITATIONS TOEGEVOEGD (in USED_SOURCES blok, NIET in antwoord tekst)
 ✅ PERSONEN DATA COMPLEET
 ✅ ANTWOORD GEGEVEN
+
+🚨 CRITICAL: GEEN BRONVERMELDING IN ANTWOORD TEKST
+- **NOOIT** "Bronnen:", "Personen:" of soortgelijke lijsten in je antwoord
+- **NOOIT** referentie nummers zoals "[1]", "(bron: persoon-123)" in tekst
+- **ALLEEN** inhoudelijke persoonsinformatie in je antwoord
+- **WEL** correcte USED_SOURCES_START/END blok aan het einde
 
 ⚠️ CITATIONS ZIJN VERPLICHT: Response is NIET compleet zonder bronvermelding!
 

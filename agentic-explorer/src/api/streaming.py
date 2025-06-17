@@ -77,37 +77,119 @@ async def _get_or_create_embedding(query_text: str, request_id: str) -> List[flo
 
 def _deduplicate_citations(citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Remove duplicate citations based on unique identifiers.
+    Remove duplicate citations and only include those with valid content.
 
     Args:
         citations: List of citation dictionaries
 
     Returns:
-        Deduplicated citations
+        Deduplicated and filtered citations with URLs
     """
     if not citations:
         return []
 
-    seen_ids = set()
+    # Track seen citations using multiple identifiers
+    seen_citations = set()
     deduplicated = []
 
     for citation in citations:
-        # Determine unique identifier
-        unique_id = citation.get(
-            "document_id", citation.get("id", citation.get("title", None))
-        )
+        # Create a unique key from multiple fields for better deduplication
+        unique_key = None
 
-        if not unique_id:
-            unique_id = "-".join(str(v) for v in citation.values() if v)
+        # Primary ID-based deduplication
+        for id_field in [
+            "id",
+            "document_id",
+            "agendapunt_id",
+            "uuid",
+            "document_nummer",
+        ]:
+            if citation.get(id_field):
+                unique_key = f"{id_field}:{citation[id_field]}"
+                break
 
-        if unique_id not in seen_ids:
-            seen_ids.add(unique_id)
+        # Fallback to title-based deduplication for items without IDs
+        if not unique_key:
+            title = citation.get("title", "").strip()
+            cite_type = citation.get("type", "").strip()
+            if title and cite_type:
+                unique_key = f"title:{cite_type}:{title}"
+
+        # Skip if no unique identifier can be created
+        if not unique_key:
+            continue
+
+        # Skip duplicates
+        if unique_key in seen_citations:
+            continue
+
+        # Filter out citations without meaningful content
+        if not citation.get("title") or citation.get("title", "").strip() == "":
+            continue
+
+        # Add URL if missing but we have enough info to generate one
+        if not citation.get("uri"):
+            citation = _add_citation_url(citation)
+
+        # Only include citations that are verified or have valid URLs
+        if citation.get("verified") or citation.get("uri"):
+            seen_citations.add(unique_key)
             deduplicated.append(citation)
 
     logger.info(
-        f"Citations: {len(citations)} → {len(deduplicated)} after deduplication"
+        f"Citations: {len(citations)} → {len(deduplicated)} after deduplication and filtering"
     )
+
     return deduplicated
+
+
+def _add_citation_url(citation: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Add a URL to a citation if possible based on its type and content.
+
+    Args:
+        citation: Citation dictionary
+
+    Returns:
+        Citation with added URL if possible
+    """
+    cite_type = citation.get("type", "")
+    cite_id = citation.get("id", "")
+    document_nummer = citation.get("document_nummer", "")
+
+    # For documents with numbers, generate official TK URLs
+    if document_nummer and cite_type in [
+        "Motie",
+        "Amendement",
+        "Brief regering",
+        "Wetsvoorstel",
+    ]:
+        url_patterns = {
+            "Brief regering": f"https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id={document_nummer}&did={document_nummer}",
+            "Motie": f"https://www.tweedekamer.nl/kamerstukken/moties/detail?id={document_nummer}&did={document_nummer}",
+            "Amendement": f"https://www.tweedekamer.nl/kamerstukken/amendementen/detail?id={document_nummer}&did={document_nummer}",
+            "Wetsvoorstel": f"https://www.tweedekamer.nl/kamerstukken/wetsvoorstellen/detail?id={document_nummer}&did={document_nummer}",
+        }
+        if cite_type in url_patterns:
+            citation["uri"] = url_patterns[cite_type]
+
+    # For voting/agenda items, link to relevant sections
+    elif cite_type == "Stemming":
+        citation["uri"] = "https://www.tweedekamer.nl/vergaderingen/stemmingen"
+    elif cite_type == "Agendapunt":
+        citation["uri"] = (
+            "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen"
+        )
+    elif cite_type == "Zaak":
+        citation["uri"] = "https://www.tweedekamer.nl/kamerstukken"
+    elif cite_type == "Persoon":
+        citation["uri"] = "https://www.tweedekamer.nl/kamerleden"
+
+    # Fallback to general parliament site
+    elif not citation.get("uri"):
+        citation["uri"] = "https://www.tweedekamer.nl"
+
+    return citation
 
 
 async def _put_event_on_queue(

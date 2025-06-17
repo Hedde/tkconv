@@ -53,8 +53,48 @@ class CitationBuilder:
             if value is not None and value != "":
                 source[key] = str(value)
 
+        # Auto-generate URI if not provided
+        if "uri" not in source or not source["uri"]:
+            source["uri"] = self._generate_url(source)
+
         self.sources.append(source)
         return self
+
+    def _generate_url(self, source: Dict[str, str]) -> str:
+        """Generate appropriate URL for a source based on its type and content."""
+        source_type = source.get("type", "")
+        document_nummer = source.get("document_nummer", "")
+        source_id = source.get("id", "")
+
+        # For documents with numbers, generate official TK URLs
+        if document_nummer and source_type in [
+            "Motie",
+            "Amendement",
+            "Brief regering",
+            "Wetsvoorstel",
+            "Document",
+        ]:
+            url_patterns = {
+                "Brief regering": f"https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id={document_nummer}&did={document_nummer}",
+                "Motie": f"https://www.tweedekamer.nl/kamerstukken/moties/detail?id={document_nummer}&did={document_nummer}",
+                "Amendement": f"https://www.tweedekamer.nl/kamerstukken/amendementen/detail?id={document_nummer}&did={document_nummer}",
+                "Wetsvoorstel": f"https://www.tweedekamer.nl/kamerstukken/wetsvoorstellen/detail?id={document_nummer}&did={document_nummer}",
+                "Document": f"https://www.tweedekamer.nl/kamerstukken/detail?id={document_nummer}&did={document_nummer}",
+            }
+            return url_patterns.get(source_type, url_patterns["Document"])
+
+        # For voting/agenda items, link to relevant sections
+        elif source_type == "Stemming":
+            return "https://www.tweedekamer.nl/vergaderingen/stemmingen"
+        elif source_type == "Agendapunt":
+            return "https://www.tweedekamer.nl/vergaderingen/commissievergaderingen"
+        elif source_type == "Zaak":
+            return "https://www.tweedekamer.nl/kamerstukken"
+        elif source_type == "Persoon":
+            return "https://www.tweedekamer.nl/kamerleden"
+
+        # Fallback to general parliament site
+        return "https://www.tweedekamer.nl"
 
     def build(self) -> str:
         """Build the complete citation block."""
@@ -135,7 +175,7 @@ class CitationBuilder:
 
 # Common citation instructions for all agents
 CITATION_INSTRUCTIONS = """
-🚨 VERPLICHTE BRONVERMELDING - ALTIJD VERPLICHT:
+🚨 VERPLICHTE BRONVERMELDING - ALLEEN IN USED_SOURCES BLOKKEN:
 
 **REGEL 1: ALTIJD CITATIONS TOEVOEGEN**
 Voeg AAN HET EINDE van ELKE response ALTIJD deze bronnenblok toe:
@@ -144,23 +184,30 @@ USED_SOURCES_START
 SOURCE: id="example-id", title="Example Title", type="SourceType", subject="Description"
 USED_SOURCES_END
 
-**REGEL 2: GEEN UITZONDERINGEN**
-⚠️ VERPLICHT: Elke database query result MOET als SOURCE worden vermeld!
-⚠️ VERPLICHT: Ook bij "geen resultaten" of "data niet beschikbaar" moet je uitleggen WELKE queries je hebt uitgevoerd!
-⚠️ VERPLICHT: Zelfs bij eenvoudige vragen moet je bronnen vermelden!
+**REGEL 2: GEEN BRONNEN IN ANTWOORD TEKST**
+🚨 KRITIEK: NOOIT bronvermelding in je hoofdantwoord!
+- **VERBODEN**: "Bronnen:", "Zaaknummers:", lijst met bronnen in tekst
+- **VERBODEN**: Referentie nummers zoals "[1]", "(bron: 2025Z11333)"
+- **ALLEEN**: Pure inhoudelijke informatie in je antwoord
+- **WEL**: Complete USED_SOURCES blok aan het einde
 
-**REGEL 3: ENFORCEMENT**
-- Je response is NIET compleet zonder citations
-- COMPLETION_SIGNALS zijn pas geldig MET citations
-- Geen citations = incomplete response = FOUT
+**REGEL 3: GEEN UITZONDERINGEN**
+⚠️ VERPLICHT: Elke database query result MOET als SOURCE worden vermeld in USED_SOURCES!
+⚠️ VERPLICHT: Ook bij "geen resultaten" moet je uitleggen WELKE queries je hebt uitgevoerd!
+⚠️ VERPLICHT: Zelfs bij eenvoudige vragen moet je USED_SOURCES blok toevoegen!
 
-**REGEL 4: MINIMAL CITATIONS**
+**REGEL 4: ENFORCEMENT**
+- Je response is NIET compleet zonder USED_SOURCES blok
+- COMPLETION_SIGNALS zijn pas geldig MET citations in USED_SOURCES
+- Geen USED_SOURCES = incomplete response = FOUT
+
+**REGEL 5: MINIMAL CITATIONS**
 Als je GEEN data vindt:
 USED_SOURCES_START
 SOURCE: id="database-query", title="Database search performed", type="Query", subject="No results found for [onderwerp]", query_executed="SELECT ... FROM ..."
 USED_SOURCES_END
 
-**REGEL 5: MULTIPLE QUERIES**
+**REGEL 6: MULTIPLE QUERIES**
 Elke uitgevoerde query moet als aparte SOURCE:
 USED_SOURCES_START
 SOURCE: id="query-1", title="Zaak search", type="Query", subject="Search for jeugdzorg cases", results_found="3"

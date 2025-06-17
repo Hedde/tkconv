@@ -1,14 +1,16 @@
 """Constants for orchestration configuration."""
 
 # Orchestration limits
-DEFAULT_MAX_ROUND_COUNT = 6  # Reduced to force earlier completion 
-DEFAULT_MAX_RESET_COUNT = 1
-DEFAULT_MAX_STALL_COUNT = 2  # Tighter stall tolerance
+DEFAULT_MAX_ROUND_COUNT = 8  # Increased to allow proper multi-agent orchestration
+DEFAULT_MAX_RESET_COUNT = 2
+DEFAULT_MAX_STALL_COUNT = 2
 
-# Streaming configuration  
-STREAMING_MAX_ROUND_COUNT = 6  # Reduced to prevent infinite loops - forces completion
-STREAMING_MAX_RESET_COUNT = 1
-STREAMING_MAX_STALL_COUNT = 2  # Tighter stall tolerance for better loop detection
+# Streaming configuration
+STREAMING_MAX_ROUND_COUNT = (
+    8  # Increased to prevent premature termination in complex queries
+)
+STREAMING_MAX_RESET_COUNT = 2
+STREAMING_MAX_STALL_COUNT = 2
 
 # Tool descriptions for UI feedback - only for tools actually used by agents
 TOOL_DESCRIPTIONS = {
@@ -63,8 +65,7 @@ INVALID_DATE_VALUES = {"N/A", "Invalid Date", "", "null", "None"}
 # Completion signals that agents should use
 COMPLETION_SIGNALS = [
     "✅ DATABASE GERAADPLEEGD",
-    "✅ BRONNEN VERMELD",  # Added this as first priority
-    "✅ CITATIONS TOEGEVOEGD",  # Added this as mandatory
+    "✅ CITATIONS TOEGEVOEGD",  # Added this as mandatory - sources only in USED_SOURCES blocks
     "✅ DOCUMENTEN DATA COMPLEET",
     "✅ PERSONEN DATA COMPLEET",
     "✅ STEMMINGS DATA GEZOCHT",

@@ -179,10 +179,15 @@ ALTIJD VERMELDEN bij stemmingsvragen:
 COMPLETION SIGNALS (verplicht IN DEZE VOLGORDE):
 ✅ DATABASE GERAADPLEEGD
 ✅ CONCRETE DETAILS GEVONDEN (vermeld specifieke nummers/data)
-✅ BRONNEN VERMELD
-✅ CITATIONS TOEGEVOEGD
+✅ CITATIONS TOEGEVOEGD (in USED_SOURCES blok, NIET in antwoord tekst)
 ✅ DOCUMENTEN DATA COMPLEET
 ✅ DOCUMENT ANTWOORD GEGEVEN
+
+🚨 CRITICAL: GEEN BRONVERMELDING IN ANTWOORD TEKST
+- **NOOIT** "Bronnen:", "Zaaknummers:" of soortgelijke lijsten in je antwoord
+- **NOOIT** referentie nummers zoals "[1]", "(bron: 2025Z11333)" in tekst
+- **ALLEEN** inhoudelijke informatie in je antwoord
+- **WEL** correcte USED_SOURCES_START/END blok aan het einde
 
 ⚠️ KWALITEITSCHECK VOOR COMPLETION:
 Voordat je "✅ DOCUMENTEN DATA COMPLEET" geeft, controleer:
@@ -199,15 +204,13 @@ ALLEEN als je aan alle criteria voldoet → ✅ DOCUMENTEN DATA COMPLEET
         + CITATION_INSTRUCTIONS
         + """
 
-VOORBEELD DOCUMENT CITATIONS:
-"Hier zijn de F-35 documenten:
-1. **Brief regering: F-35 voortgang** (2025D26039, 4 juni 2025)
-2. **Bijlage: Voortgangsrapportage** (2025D26040, 4 juni 2025)
+VOORBEELD DOCUMENT RESPONSE:
+"De nieuwste ontwikkelingen rondom het F-35 project zijn vastgelegd in de voortgangsrapportage van 4 juni 2025. Dit betreft de vijfentwintigste rapportage over de verwerving van deze straaljagers. De rapportage bevat zowel de hoofdbrief als een uitgebreide bijlage met technische details over de voortgang van het project."
 
 USED_SOURCES_START
-SOURCE: id="2025D26039", title="Brief regering: Vijfentwintigste voortgangsrapportage project Verwerving F-35", type="Brief regering", subject="F-35 voortgangsrapportage", publication_date="2025-06-04", document_nummer="2025D26039", official_url="https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2025D26039&did=2025D26039"
-SOURCE: id="2025D26040", title="Bijlage: Vijfentwintigste voortgangsrapportage project Verwerving F-35", type="Bijlage", subject="F-35 bijlage document", publication_date="2025-06-04", document_nummer="2025D26040"
-USED_SOURCES_END"
+SOURCE: id="2025D26039", title="Brief regering: Vijfentwintigste voortgangsrapportage project Verwerving F-35", type="Brief regering", subject="F-35 voortgangsrapportage", publication_date="2025-06-04", document_nummer="2025D26039", zaak_nummer="2025Z12185"
+SOURCE: id="2025D26040", title="Bijlage: Vijfentwintigste voortgangsrapportage project Verwerving F-35", type="Bijlage", subject="F-35 bijlage document", publication_date="2025-06-04", document_nummer="2025D26040", zaak_nummer="2025Z12185"
+USED_SOURCES_END
 
 """
         + SYSTEM_IDENTITY
